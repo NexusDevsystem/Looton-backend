@@ -36,7 +36,13 @@ type SimpleRedis = {
 	duplicate: () => SimpleRedis
 }
 
-export const redis: SimpleRedis | Redis = env.NODE_ENV === 'test' ? (createMemoryRedis() as SimpleRedis) : new Redis(env.REDIS_URL)
+export const redis: SimpleRedis | Redis =
+	env.NODE_ENV === 'test'
+		? ((createMemoryRedis() as SimpleRedis))
+		: new Redis(env.REDIS_URL, {
+			// BullMQ requires this to be null to avoid retrying failed commands implicitly
+			maxRetriesPerRequest: null
+		})
 
 export async function deleteByPattern(pattern: string) {
 	let cursor = '0'
