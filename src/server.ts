@@ -10,6 +10,7 @@ async function main() {
     await startJobs()
   }
   await app.listen({ port: env.PORT, host: '0.0.0.0' })
+  console.log(`Backend rodando em http://0.0.0.0:${env.PORT}`)
 }
 
 main().catch((err) => {

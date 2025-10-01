@@ -4,6 +4,10 @@ import { z } from 'zod'
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(3000),
+  JWT_SECRET: z.string().default('change_me'),
+  ACCESS_TTL: z.string().default('15m'),
+  REFRESH_TTL: z.string().default('7d'),
+  BCRYPT_ROUNDS: z.coerce.number().default(12),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   MONGODB_DBNAME: z.string().min(1, 'MONGODB_DBNAME is required'),
   REDIS_URL: z.string().min(1, 'REDIS_URL is required'),

@@ -8,6 +8,8 @@ export type OfferDTO = {
   discountPct: number
   isActive: boolean
   coverUrl?: string
+  genres?: string[]
+  tags?: string[]
 }
 
 export interface StoreAdapter {

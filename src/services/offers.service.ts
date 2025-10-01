@@ -7,6 +7,7 @@ import { OfferDTO } from '../adapters/types.js'
 import { redis, deleteByPattern } from '../lib/redis.js'
 import { slugify } from '../utils/slugify.js'
 import { checkAndNotify } from './alerts.service.js'
+import { checkFavoritesAndNotify, verifyPriceChangeDebounce } from './favorites.service.js'
 
 export async function upsertOffersAndNotify(list: OfferDTO[]) {
   for (const dto of list) {
@@ -23,8 +24,24 @@ export async function upsertOffersAndNotify(list: OfferDTO[]) {
         storeAppId: dto.storeAppId,
         title: dto.title,
         slug: slugify(dto.title),
-        coverUrl: dto.coverUrl
+        coverUrl: dto.coverUrl,
+        genres: dto.genres || [],
+        tags: dto.tags || []
       })
+    } else {
+      // Update genres and tags if provided
+      let shouldUpdate = false
+      if (dto.genres && dto.genres.length > 0) {
+        game.genres = dto.genres
+        shouldUpdate = true
+      }
+      if (dto.tags && dto.tags.length > 0) {
+        game.tags = dto.tags
+        shouldUpdate = true
+      }
+      if (shouldUpdate) {
+        await game.save()
+      }
     }
 
     const active = await Offer.findOne({ gameId: game._id, storeId: store._id, isActive: true })
@@ -49,7 +66,15 @@ export async function upsertOffersAndNotify(list: OfferDTO[]) {
           priceFinal: dto.priceFinal,
           discountPct: dto.discountPct
         })
+        
+        // Check for existing alerts
         await checkAndNotify(String(game._id), created)
+        
+        // Check for favorites notifications with debounce
+        const isStableChange = await verifyPriceChangeDebounce(game._id, store._id)
+        if (isStableChange) {
+          await checkFavoritesAndNotify(game._id, created)
+        }
       } else {
         // Refresh lastSeen
         active.lastSeenAt = new Date()
@@ -88,9 +113,11 @@ export async function getTopDeals(minDiscount = 0, limit = 20) {
     { $limit: limit },
     { $lookup: { from: 'games', localField: 'gameId', foreignField: '_id', as: 'game' } },
     { $unwind: '$game' },
+    // Exclude games that were soft-deleted
+    { $match: { 'game.deletedAt': { $exists: false } } },
     { $lookup: { from: 'stores', localField: 'storeId', foreignField: '_id', as: 'store' } },
     { $unwind: '$store' },
-    { $project: { _id: 1, url: 1, priceBase: 1, priceFinal: 1, discountPct: 1, 'game.title': 1, 'game.coverUrl': 1, 'store.name': 1 } }
+  { $project: { _id: 1, url: 1, priceBase: 1, priceFinal: 1, discountPct: 1, 'game.title': 1, 'game.coverUrl': 1, 'game.genres': 1, 'store.name': 1 } }
   ])
 
   await redis.setex(key, 60, JSON.stringify(docs))
@@ -113,4 +140,110 @@ export async function getHistory(gameId: string, limit = 60) {
   const id = new Types.ObjectId(gameId)
   const hist = await PriceHistory.find({ gameId: id }).sort({ seenAt: -1 }).limit(limit).lean()
   return hist
+}
+
+export interface DealsFilters {
+  genres?: string[]
+  tags?: string[]
+  stores?: string[]
+  minDiscount?: number
+  maxPrice?: number
+  page?: number
+  limit?: number
+}
+
+export async function getFilteredDeals(filters: DealsFilters) {
+  const { 
+    genres, 
+    tags, 
+    stores, 
+    minDiscount = 0, 
+    maxPrice, 
+    page = 1, 
+    limit = 24 
+  } = filters
+  
+  const skip = (page - 1) * limit
+
+  // Build aggregation pipeline
+  const pipeline: any[] = [
+    { $match: { isActive: true, discountPct: { $gte: minDiscount } } }
+  ]
+
+  // Price filter
+  if (maxPrice !== undefined) {
+    pipeline[0].$match.priceFinalCents = { $lte: maxPrice }
+  }
+
+  // Join with game and store
+  pipeline.push(
+    { $lookup: { from: 'games', localField: 'gameId', foreignField: '_id', as: 'game' } },
+    { $unwind: '$game' },
+    // Exclude soft-deleted games
+    { $match: { 'game.deletedAt': { $exists: false } } },
+    { $lookup: { from: 'stores', localField: 'storeId', foreignField: '_id', as: 'store' } },
+    { $unwind: '$store' }
+  )
+
+  // Genre filter
+  if (genres?.length) {
+    pipeline.push({
+      $match: { 'game.genres': { $in: genres } }
+    })
+  }
+
+  // Tag filter  
+  if (tags?.length) {
+    pipeline.push({
+      $match: { 'game.tags': { $in: tags } }
+    })
+  }
+
+  // Store filter
+  if (stores?.length) {
+    pipeline.push({
+      $match: { 'store.name': { $in: stores } }
+    })
+  }
+
+  // Sort by discount descending
+  pipeline.push({ $sort: { discountPct: -1 } })
+
+  // Count total for pagination
+  const countPipeline = [...pipeline, { $count: 'total' }]
+  const [countResult] = await Offer.aggregate(countPipeline)
+  const total = countResult?.total || 0
+
+  // Add pagination
+  pipeline.push(
+    { $skip: skip },
+    { $limit: limit }
+  )
+
+  // Project final fields
+  pipeline.push({
+    $project: {
+      _id: 1,
+      url: 1,
+      priceBaseCents: 1,
+      priceFinalCents: 1,
+      discountPct: 1,
+      'game._id': 1,
+      'game.title': 1,
+      'game.coverUrl': 1,
+      'game.genres': 1,
+      'game.tags': 1,
+      'store.name': 1
+    }
+  })
+
+  const deals = await Offer.aggregate(pipeline)
+
+  return {
+    deals,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit)
+  }
 }

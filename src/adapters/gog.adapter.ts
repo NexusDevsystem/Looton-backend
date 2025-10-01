@@ -11,6 +11,7 @@ const mock: OfferDTO[] = [
     priceFinal: 99.99,
     discountPct: 50,
     isActive: true
+    , genres: ['Ação', 'RPG']
   }
 ]
 
