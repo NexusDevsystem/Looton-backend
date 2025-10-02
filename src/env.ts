@@ -8,8 +8,9 @@ const envSchema = z.object({
   ACCESS_TTL: z.string().default('15m'),
   REFRESH_TTL: z.string().default('7d'),
   BCRYPT_ROUNDS: z.coerce.number().default(12),
-  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
-  MONGODB_DBNAME: z.string().min(1, 'MONGODB_DBNAME is required'),
+  // Allow running without MongoDB by default (DB-less features). connectMongo() guards real connections.
+  MONGODB_URI: z.string().default(''),
+  MONGODB_DBNAME: z.string().default(''),
   USE_REDIS: z.coerce.boolean().default(false),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   REDIS_REQUIRE_NOEVICTION: z.coerce.boolean().default(false),
