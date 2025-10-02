@@ -15,8 +15,4 @@ export async function startJobs() {
   // kick once on startup (non-blocking)
   q1.add('updateAllStores', {})
 }
-
-export async function runAllNow() {
-  await runUpdateAllStores()
-  await runRefreshCurrency()
-}
+// Removed unused runAllNow helper to reduce surface area.

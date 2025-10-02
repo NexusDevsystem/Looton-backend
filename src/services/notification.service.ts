@@ -1,8 +1,8 @@
 import { Expo } from 'expo-server-sdk'
-import { NotificationRule } from '../db/models/NotificationRule'
-import { PriceWindow } from '../db/models/PriceWindow'
-import { User } from '../db/models/User'
-import { Mute } from '../db/models/Mute'
+import { NotificationRule } from '../db/models/NotificationRule.js'
+import { PriceWindow } from '../db/models/PriceWindow.js'
+import { User } from '../db/models/User.js'
+import { Mute } from '../db/models/Mute.js'
 
 const expo = new Expo()
 

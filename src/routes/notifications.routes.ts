@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { NotificationRule } from '../db/models/NotificationRule'
-import { PriceWindow } from '../db/models/PriceWindow'
-import { evaluateAndPush } from '../services/notification.service'
+import { NotificationRule } from '../db/models/NotificationRule.js'
+import { PriceWindow } from '../db/models/PriceWindow.js'
+import { evaluateAndPush } from '../services/notification.service.js'
 
 export default async function notificationsRoutes(app: FastifyInstance) {
   app.post('/notification-rules', async (req: any, reply: any) => {

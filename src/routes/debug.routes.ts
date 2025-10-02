@@ -44,6 +44,140 @@ export default async function debugRoutes(app: FastifyInstance) {
       return reply.status(500).send({ message: 'failed to process' })
     }
   })
+
+  // Endpoint para popular gêneros Steam nos jogos existentes
+  app.post('/debug/populate-genres', async (request, reply) => {
+    try {
+      const { Game } = await import('../db/models/Game.js')
+      
+      // Mapear jogos por steamAppId para seus gêneros
+      const gameGenresMap: Record<string, Array<{ id: string; name: string }>> = {
+        '730': [{ id: '1', name: 'Ação' }, { id: '13', name: 'Luta' }],
+        '292030': [{ id: '7', name: 'RPG' }, { id: '2', name: 'Aventura' }],
+        '1551360': [{ id: '6', name: 'Corrida' }, { id: '9', name: 'Esportes' }],
+        '413150': [{ id: '4', name: 'Indie' }, { id: '8', name: 'Simulação' }],
+        '289070': [{ id: '10', name: 'Estratégia' }],
+        '1517290': [{ id: '1', name: 'Ação' }, { id: '5', name: 'Multijogador Massivo' }],
+        '1203220': [{ id: '1', name: 'Ação' }, { id: '2', name: 'Aventura' }]
+      }
+      
+      // Também buscar por títulos para garantir que peguemos todos os jogos
+      const gameTitleGenresMap: Record<string, Array<{ id: string; name: string }>> = {
+        'Forza Horizon 5': [{ id: '6', name: 'Corrida' }, { id: '9', name: 'Esportes' }],
+        'Counter-Strike 2': [{ id: '1', name: 'Ação' }, { id: '13', name: 'Luta' }],
+        'The Witcher 3': [{ id: '7', name: 'RPG' }, { id: '2', name: 'Aventura' }],
+        'Stardew Valley': [{ id: '4', name: 'Indie' }, { id: '8', name: 'Simulação' }],
+        'Civilization VI': [{ id: '10', name: 'Estratégia' }],
+        'Battlefield 2042': [{ id: '1', name: 'Ação' }, { id: '5', name: 'Multijogador Massivo' }],
+        'Naraka: Bladepoint': [{ id: '1', name: 'Ação' }, { id: '2', name: 'Aventura' }]
+      }
+      
+      let updated = 0
+      
+      // Atualizar cada jogo com seus gêneros Steam por steamAppId
+      for (const [steamAppId, steamGenres] of Object.entries(gameGenresMap)) {
+        const result = await Game.updateMany(
+          {
+            $or: [
+              { steamAppId: parseInt(steamAppId) },
+              { storeAppId: steamAppId }
+            ]
+          },
+          {
+            $set: { steamGenres }
+          }
+        )
+        updated += result.modifiedCount
+        console.log(`Atualizado ${result.modifiedCount} jogos para steamAppId ${steamAppId}`)
+      }
+      
+      // Atualizar jogos por título também (fallback)
+      for (const [title, steamGenres] of Object.entries(gameTitleGenresMap)) {
+        const result = await Game.updateMany(
+          {
+            title: { $regex: title, $options: 'i' }
+          },
+          {
+            $set: { steamGenres }
+          }
+        )
+        updated += result.modifiedCount
+        console.log(`Atualizado ${result.modifiedCount} jogos para título ${title}`)
+      }
+      
+      return reply.send({ 
+        ok: true, 
+        message: `${updated} jogos atualizados com gêneros Steam`,
+        updated 
+      })
+      
+    } catch (err) {
+      request.log.error(err)
+      return reply.status(500).send({ message: 'failed to populate genres', error: err })
+    }
+  })
+
+  // Endpoint para criar usuário de teste com preferências
+  app.post('/debug/create-test-user', async (request, reply) => {
+    try {
+      const { User } = await import('../db/models/User.js')
+      const body = request.body as { preferences?: { preferredSteamGenreIds: string[] } }
+      
+      // Criar ou atualizar usuário de teste
+      const testUser = await User.findOneAndUpdate(
+        { email: 'test@looton.app' },
+        {
+          email: 'test@looton.app',
+          name: 'Test User',
+          preferences: body.preferences || {
+            preferredSteamGenreIds: ['6'], // Corrida como padrão
+            minDiscount: 0,
+            stores: []
+          }
+        },
+        { upsert: true, new: true }
+      )
+      
+      return reply.send({ 
+        ok: true, 
+        userId: testUser._id.toString(),
+        preferences: testUser.preferences 
+      })
+      
+    } catch (err) {
+      request.log.error(err)
+      return reply.status(500).send({ message: 'failed to create test user', error: err })
+    }
+  })
+
+  // Endpoint para testar sistema de boost
+  app.get('/debug/test-boost/:userId', async (request, reply) => {
+    try {
+      const { fetchDealsBoosted } = await import('../services/deals.service.js')
+      const userId = (request.params as any).userId
+      
+      if (!userId) {
+        return reply.status(400).send({ message: 'userId required' })
+      }
+      
+      const deals = await fetchDealsBoosted(userId, 10)
+      
+      return reply.send({ 
+        ok: true, 
+        count: deals.length,
+        deals: deals.map(d => ({
+          title: d.title,
+          score: d.score,
+          genres: d.steamGenres?.map(g => g.name) || [],
+          discount: d.discountPct
+        }))
+      })
+      
+    } catch (err) {
+      request.log.error(err)
+      return reply.status(500).send({ message: 'failed to test boost', error: err })
+    }
+  })
 }
 
 export { debugPushTokens }

@@ -16,7 +16,4 @@ export async function getBRLRate(base = 'BRL') {
   lastUpdated = now
   return rate
 }
-
-export function toBRL(value: number, rate: number) {
-  return Math.round(value * rate * 100) / 100
-}
+// Removed unused toBRL helper; keep only getBRLRate which is used elsewhere.

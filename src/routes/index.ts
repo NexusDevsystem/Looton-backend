@@ -8,7 +8,11 @@ import favoritesRoutes from './favorites.routes.js'
 import listsRoutes from './lists.routes.js'
 import debugRoutes from './debug.routes.js'
 import steamRoutes from './steam.routes.js'
+import { steamGenresRoutes } from './steam.genres.js'
+import { userPreferencesRoutes } from './user.prefs.js'
 import currencyRoutes from './currency.routes.js'
+import feedRoutes from './feed.routes.js'
+import pcRoutes from './pc.routes.js'
 
 export default async function routes(app: FastifyInstance) {
   await app.register(dealsRoutes)
@@ -20,5 +24,9 @@ export default async function routes(app: FastifyInstance) {
   await app.register(listsRoutes)
   await app.register(debugRoutes)
   await app.register(steamRoutes)
+  await app.register(steamGenresRoutes)
+  await app.register(userPreferencesRoutes)
   await app.register(currencyRoutes)
+  await app.register(feedRoutes)
+  await app.register(pcRoutes)
 }

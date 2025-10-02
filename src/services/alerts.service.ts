@@ -1,8 +1,8 @@
 import { Types } from 'mongoose'
-import { Alert } from '../db/models/Alert'
-import { User } from '../db/models/User'
-import { Store } from '../db/models/Store'
-import { Game } from '../db/models/Game'
+import { Alert } from '../db/models/Alert.js'
+import { User } from '../db/models/User.js'
+import { Store } from '../db/models/Store.js'
+import { Game } from '../db/models/Game.js'
 
 export async function registerUser(input: { email: string; pushToken?: string }) {
   const exists = await User.findOne({ email: input.email })

@@ -36,13 +36,48 @@ type SimpleRedis = {
 	duplicate: () => SimpleRedis
 }
 
-export const redis: SimpleRedis | Redis =
-	env.NODE_ENV === 'test'
-		? ((createMemoryRedis() as SimpleRedis))
-		: new Redis(env.REDIS_URL, {
-			// BullMQ requires this to be null to avoid retrying failed commands implicitly
-			maxRetriesPerRequest: null
-		})
+let warnedPolicy = false
+
+function createDisabledRedis(): SimpleRedis {
+	const stub = createMemoryRedis()
+	// Ensure type compatibility
+	return {
+		get: stub.get,
+		setex: async (key: string, seconds: number, value: string) => {
+			await stub.setex(key, seconds, value)
+			return 'OK'
+		},
+		scan: stub.scan,
+		del: stub.del,
+		duplicate: () => createDisabledRedis()
+	}
+}
+
+export const redis: SimpleRedis | Redis = (() => {
+	if (!env.USE_REDIS) {
+		return createDisabledRedis()
+	}
+	if (env.NODE_ENV === 'test') {
+		return createMemoryRedis() as SimpleRedis
+	}
+	const client = new Redis(env.REDIS_URL, {
+		maxRetriesPerRequest: null,
+		enableAutoPipelining: true
+	})
+	// If required, check eviction policy once and warn (no throw)
+	if (env.REDIS_REQUIRE_NOEVICTION && !warnedPolicy) {
+		client.config('GET', 'maxmemory-policy').then((res: any) => {
+			try {
+				const policy = Array.isArray(res) ? String(res[1]) : String(res?.['maxmemory-policy'] || res)
+				if (policy && policy !== 'noeviction' && !warnedPolicy) {
+					warnedPolicy = true
+					console.warn('IMPORTANT! Redis eviction policy is', policy, 'expected "noeviction". Proceeding anyway.')
+				}
+			} catch {}
+		}).catch(() => {/* ignore */})
+	}
+	return client
+})()
 
 export async function deleteByPattern(pattern: string) {
 	let cursor = '0'
