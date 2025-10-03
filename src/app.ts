@@ -18,6 +18,13 @@ export function buildApp() {
 
   registerErrorHandler(app)
 
+  app.get('/', async () => ({ 
+    name: 'Looton Backend API',
+    version: '1.0.0',
+    status: 'ok',
+    endpoints: ['/deals', '/health', '/pc-deals']
+  }))
+
   app.get('/health', async () => ({ ok: true }))
 
   app.register(routes, { prefix: '/' })

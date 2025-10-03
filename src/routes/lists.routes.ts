@@ -38,30 +38,55 @@ export default async function listsRoutes(app: FastifyInstance) {
 
   // GET /lists - Listar listas do usuário
   app.get('/lists', async (req: any, reply: any) => {
-    // userId optional: if provided, return user's lists + public lists. If absent, return only public lists.
-    const schema = z.object({ userId: z.string().optional() })
-    const { userId } = schema.parse(req.query)
+    try {
+      // userId optional: if provided, return user's lists + public lists. If absent, return only public lists.
+      const schema = z.object({ userId: z.string().optional() })
+      const { userId } = schema.parse(req.query)
 
-    let query: any = { userId: null }
-    if (userId && Types.ObjectId.isValid(userId)) {
-      // user's own lists + public lists
-      query = { $or: [{ userId: new Types.ObjectId(userId) }, { userId: null }] }
+      let query: any = { userId: null }
+      if (userId && Types.ObjectId.isValid(userId)) {
+        // user's own lists + public lists
+        query = { $or: [{ userId: new Types.ObjectId(userId) }, { userId: null }] }
+      }
+
+      // Adicionar timeout maior e fallback
+      const lists = await List.find(query)
+        .sort({ createdAt: -1 })
+        .maxTimeMS(5000)
+        .lean() // Use lean para melhor performance
+
+      // Se não conseguir buscar listas, retornar array vazio ao invés de erro
+      if (!lists) {
+        console.warn('MongoDB timeout - retornando lista vazia')
+        return reply.send([])
+      }
+
+      // Get item count para cada lista com timeout
+      const listsWithCount = await Promise.all(
+        lists.map(async (list) => {
+          try {
+            const itemCount = await ListItem.countDocuments({ listId: list._id })
+              .maxTimeMS(2000)
+            return {
+              ...list,
+              itemCount
+            }
+          } catch (error) {
+            console.warn(`Erro ao contar items da lista ${list._id}:`, error)
+            return {
+              ...list,
+              itemCount: 0 // Fallback
+            }
+          }
+        })
+      )
+
+      return reply.send(listsWithCount)
+    } catch (error: any) {
+      console.error('Erro ao buscar listas:', error)
+      // Fallback: retornar array vazio ao invés de erro
+      return reply.send([])
     }
-
-    const lists = await List.find(query).sort({ createdAt: -1 })
-
-    // Get item count for each list
-    const listsWithCount = await Promise.all(
-      lists.map(async (list) => {
-        const itemCount = await ListItem.countDocuments({ listId: list._id })
-        return {
-          ...list.toObject(),
-          itemCount
-        }
-      })
-    )
-
-    return reply.send(listsWithCount)
   })
 
   // POST /lists/:listId/items - Adicionar jogo à lista

@@ -1,102 +1,130 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { Types } from 'mongoose'
-import { Favorite } from '../db/models/Favorite.js'
+
+// Cache em memória para favoritos (sem MongoDB)
+const favoritesCache = new Map<string, any[]>()
 
 export default async function favoritesRoutes(app: FastifyInstance) {
-  // POST /favorites - Criar favorito
+  // POST /favorites - Criar favorito (sem MongoDB)
   app.post('/favorites', async (req: any, reply: any) => {
+    console.log('📝 POST favorites - cache em memória')
+    
     const schema = z.object({
-      userId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'userId deve ser um ObjectId válido'
-      }),
-      gameId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'gameId deve ser um ObjectId válido'
-      }),
+      userId: z.string(),
+      gameId: z.string(),
       stores: z.array(z.string()).optional(),
       notifyUp: z.boolean().optional(),
       notifyDown: z.boolean().optional(),
       pctThreshold: z.number().min(1).max(100).optional(),
       desiredPriceCents: z.number().int().min(0).optional(),
-      listId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'listId deve ser um ObjectId válido'
-      }).optional()
+      listId: z.string().optional()
     })
 
     try {
       const data = schema.parse(req.body)
       
-      const favorite = new Favorite({
-        userId: new Types.ObjectId(data.userId),
-        gameId: new Types.ObjectId(data.gameId),
-        stores: data.stores,
-        notifyUp: data.notifyUp,
-        notifyDown: data.notifyDown,
-        pctThreshold: data.pctThreshold,
-        desiredPriceCents: data.desiredPriceCents,
-        listId: data.listId ? new Types.ObjectId(data.listId) : undefined
-      })
-
-      await favorite.save()
-      return reply.status(201).send(favorite)
-    } catch (error: any) {
-      if (error.code === 11000) {
+      // Buscar favoritos existentes do usuário
+      const userFavorites = favoritesCache.get(data.userId) || []
+      
+      // Verificar se já existe
+      const existingIndex = userFavorites.findIndex(f => f.gameId === data.gameId)
+      if (existingIndex !== -1) {
         return reply.status(409).send({ error: 'Jogo já está nos favoritos' })
       }
+      
+      // Criar novo favorito
+      const newFavorite = {
+        _id: `fav_${Date.now()}_${Math.random()}`,
+        userId: data.userId,
+        gameId: data.gameId,
+        stores: data.stores || ['steam'],
+        notifyUp: data.notifyUp || false,
+        notifyDown: data.notifyDown || false,
+        pctThreshold: data.pctThreshold || 10,
+        desiredPriceCents: data.desiredPriceCents || 0,
+        listId: data.listId,
+        createdAt: new Date()
+      }
+
+      // Adicionar ao cache
+      userFavorites.push(newFavorite)
+      favoritesCache.set(data.userId, userFavorites)
+
+      return reply.status(201).send(newFavorite)
+    } catch (error: any) {
       return reply.status(400).send({ error: error.message })
     }
   })
 
-  // GET /favorites - Listar favoritos
+  // GET /favorites - Buscar favoritos do usuário (sem MongoDB)
   app.get('/favorites', async (req: any, reply: any) => {
+    console.log('📋 GET favorites - cache em memória')
+    
     const schema = z.object({
-      userId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'userId deve ser um ObjectId válido'
-      }),
-      store: z.enum(['steam', 'epic']).optional(),
+      userId: z.string(),
+      store: z.string().optional(),
       changed: z.enum(['down', 'up']).optional()
     })
 
-    const { userId, store, changed } = schema.parse(req.query)
-    
-    let filter: any = { userId: new Types.ObjectId(userId) }
-    
-    if (store) {
-      filter.stores = store
+    try {
+      const { userId, store } = schema.parse(req.query)
+      
+      // Buscar favoritos do cache
+      let favorites = favoritesCache.get(userId) || []
+      
+      // Filtrar por store se especificado
+      if (store) {
+        favorites = favorites.filter(f => f.stores?.includes(store))
+      }
+      
+      // Ordenar por data de criação (mais recente primeiro)
+      favorites.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+      return reply.send(favorites)
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message })
     }
-
-    const favorites = await Favorite.find(filter)
-      .populate('gameId')
-      .sort({ createdAt: -1 })
-
-    return reply.send(favorites)
   })
 
-  // DELETE /favorites/:id - Remover favorito
+  // DELETE /favorites/:id - Remover favorito (sem MongoDB)
   app.delete('/favorites/:id', async (req: any, reply: any) => {
+    console.log('🗑️ DELETE favorites - cache em memória')
+    
     const schema = z.object({
-      id: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'id deve ser um ObjectId válido'
-      })
+      id: z.string()
     })
 
-    const { id } = schema.parse(req.params)
-    
-    const favorite = await Favorite.findByIdAndDelete(id)
-    
-    if (!favorite) {
-      return reply.status(404).send({ error: 'Favorito não encontrado' })
-    }
+    try {
+      const { id } = schema.parse(req.params)
+      
+      // Procurar em todos os usuários
+      let found = false
+      for (const [userId, userFavorites] of favoritesCache.entries()) {
+        const index = userFavorites.findIndex(f => f._id === id)
+        if (index !== -1) {
+          userFavorites.splice(index, 1)
+          favoritesCache.set(userId, userFavorites)
+          found = true
+          break
+        }
+      }
+      
+      if (!found) {
+        return reply.status(404).send({ error: 'Favorito não encontrado' })
+      }
 
-    return reply.status(204).send()
+      return reply.status(204).send()
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message })
+    }
   })
 
-  // PATCH /favorites/:id - Atualizar favorito
+  // PATCH /favorites/:id - Atualizar favorito (sem MongoDB)
   app.patch('/favorites/:id', async (req: any, reply: any) => {
+    console.log('✏️ PATCH favorites - cache em memória')
+    
     const schema = z.object({
-      id: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'id deve ser um ObjectId válido'
-      })
+      id: z.string()
     })
 
     const bodySchema = z.object({
@@ -105,85 +133,103 @@ export default async function favoritesRoutes(app: FastifyInstance) {
       notifyDown: z.boolean().optional(),
       pctThreshold: z.number().min(1).max(100).optional(),
       desiredPriceCents: z.number().int().min(0).optional(),
-      listId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'listId deve ser um ObjectId válido'
-      }).optional()
+      listId: z.string().optional()
     })
 
     try {
       const { id } = schema.parse(req.params)
       const data = bodySchema.parse(req.body)
 
-      const update: any = {}
-      if (data.stores !== undefined) update.stores = data.stores
-      if (data.notifyUp !== undefined) update.notifyUp = data.notifyUp
-      if (data.notifyDown !== undefined) update.notifyDown = data.notifyDown
-      if (data.pctThreshold !== undefined) update.pctThreshold = data.pctThreshold
-      if (data.desiredPriceCents !== undefined) update.desiredPriceCents = data.desiredPriceCents
-      if (data.listId !== undefined) update.listId = new Types.ObjectId(data.listId)
+      // Procurar em todos os usuários
+      let updatedFavorite = null
+      for (const [userId, userFavorites] of favoritesCache.entries()) {
+        const index = userFavorites.findIndex(f => f._id === id)
+        if (index !== -1) {
+          // Atualizar campos
+          if (data.stores !== undefined) userFavorites[index].stores = data.stores
+          if (data.notifyUp !== undefined) userFavorites[index].notifyUp = data.notifyUp
+          if (data.notifyDown !== undefined) userFavorites[index].notifyDown = data.notifyDown
+          if (data.pctThreshold !== undefined) userFavorites[index].pctThreshold = data.pctThreshold
+          if (data.desiredPriceCents !== undefined) userFavorites[index].desiredPriceCents = data.desiredPriceCents
+          if (data.listId !== undefined) userFavorites[index].listId = data.listId
+          
+          favoritesCache.set(userId, userFavorites)
+          updatedFavorite = userFavorites[index]
+          break
+        }
+      }
 
-      const favorite = await Favorite.findByIdAndUpdate(id, update, { new: true })
+      if (!updatedFavorite) {
+        return reply.status(404).send({ error: 'Favorito não encontrado' })
+      }
 
-      if (!favorite) return reply.status(404).send({ error: 'Favorito não encontrado' })
-
-      return reply.send(favorite)
+      return reply.send(updatedFavorite)
     } catch (error: any) {
       return reply.status(400).send({ error: error.message })
     }
   })
 
-  // POST /favorites/sync - Sincronizar favoritos em lote (mobile -> server)
-  // Body: { userId, favorites: [{ gameId, stores?, notifyUp?, notifyDown?, pctThreshold?, desiredPriceCents?, listId? }] }
+  // POST /favorites/sync - Sincronizar favoritos em lote (sem MongoDB)
   app.post('/favorites/sync', async (req: any, reply: any) => {
+    console.log('🔄 POST favorites/sync - cache em memória')
+    
     const schema = z.object({
-      userId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'userId deve ser um ObjectId válido'
-      }),
+      userId: z.string(),
       favorites: z.array(z.object({
-        gameId: z.string().refine(val => Types.ObjectId.isValid(val), {
-          message: 'gameId deve ser um ObjectId válido'
-        }),
+        gameId: z.string(),
         stores: z.array(z.string()).optional(),
         notifyUp: z.boolean().optional(),
         notifyDown: z.boolean().optional(),
         pctThreshold: z.number().min(1).max(100).optional(),
         desiredPriceCents: z.number().int().min(0).optional(),
-        listId: z.string().refine(val => Types.ObjectId.isValid(val), {
-          message: 'listId deve ser um ObjectId válido'
-        }).optional()
+        listId: z.string().optional()
       }))
     })
 
     try {
       const data = schema.parse(req.body)
-      const userObjectId = new Types.ObjectId(data.userId)
-
       const results: any[] = []
 
+      // Buscar favoritos existentes do usuário
+      const userFavorites = favoritesCache.get(data.userId) || []
+
       for (const f of data.favorites) {
-        const gameObjectId = new Types.ObjectId(f.gameId)
-
-        // Upsert: if favorite exists for this user+game, update fields; otherwise create
-        const update: any = {
-          userId: userObjectId,
-          gameId: gameObjectId
+        // Buscar se já existe
+        const existingIndex = userFavorites.findIndex(existing => existing.gameId === f.gameId)
+        
+        if (existingIndex !== -1) {
+          // Atualizar existente
+          const existing = userFavorites[existingIndex]
+          if (f.stores !== undefined) existing.stores = f.stores
+          if (f.notifyUp !== undefined) existing.notifyUp = f.notifyUp
+          if (f.notifyDown !== undefined) existing.notifyDown = f.notifyDown
+          if (f.pctThreshold !== undefined) existing.pctThreshold = f.pctThreshold
+          if (f.desiredPriceCents !== undefined) existing.desiredPriceCents = f.desiredPriceCents
+          if (f.listId !== undefined) existing.listId = f.listId
+          
+          results.push(existing)
+        } else {
+          // Criar novo
+          const newFavorite = {
+            _id: `fav_${Date.now()}_${Math.random()}`,
+            userId: data.userId,
+            gameId: f.gameId,
+            stores: f.stores || ['steam'],
+            notifyUp: f.notifyUp || false,
+            notifyDown: f.notifyDown || false,
+            pctThreshold: f.pctThreshold || 10, 
+            desiredPriceCents: f.desiredPriceCents || 0,
+            listId: f.listId,
+            createdAt: new Date()
+          }
+          
+          userFavorites.push(newFavorite)
+          results.push(newFavorite)
         }
-
-        if (f.stores !== undefined) update.stores = f.stores
-        if (f.notifyUp !== undefined) update.notifyUp = f.notifyUp
-        if (f.notifyDown !== undefined) update.notifyDown = f.notifyDown
-        if (f.pctThreshold !== undefined) update.pctThreshold = f.pctThreshold
-        if (f.desiredPriceCents !== undefined) update.desiredPriceCents = f.desiredPriceCents
-        if (f.listId !== undefined) update.listId = new Types.ObjectId(f.listId)
-
-        const fav = await Favorite.findOneAndUpdate(
-          { userId: userObjectId, gameId: gameObjectId },
-          { $set: update },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        )
-
-        results.push(fav)
       }
+
+      // Salvar no cache
+      favoritesCache.set(data.userId, userFavorites)
 
       return reply.send({ synced: results.length, favorites: results })
     } catch (error: any) {
