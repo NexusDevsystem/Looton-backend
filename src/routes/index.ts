@@ -13,6 +13,7 @@ import { userPreferencesRoutes } from './user.prefs.js'
 import currencyRoutes from './currency.routes.js'
 import feedRoutes from './feed.routes.js'
 import pcRoutes from './pc.routes.js'
+import priceHistoryRoutes from './price-history.routes.js'
 
 export default async function routes(app: FastifyInstance) {
   await app.register(dealsRoutes)
@@ -29,4 +30,5 @@ export default async function routes(app: FastifyInstance) {
   await app.register(currencyRoutes)
   await app.register(feedRoutes)
   await app.register(pcRoutes)
+  await app.register(priceHistoryRoutes)
 }
