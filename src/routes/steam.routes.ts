@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getTopDeals } from '../services/offers.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { fetchSteamFeatured, fetchSteamAppPrice } from '../services/steam-api.service.js'
+import { pickImageUrls } from '../utils/imageUtils.js'
 
 export default async function steamRoutes(app: FastifyInstance) {
   // GET /steam/price/:appId - Preço real da Steam com fallback para packages/bundles
@@ -99,10 +100,13 @@ export default async function steamRoutes(app: FastifyInstance) {
       const games = offers.slice(0, lim).map((o: any) => {
         const priceFinal = o.priceFinal || 0
         const priceBase = o.priceBase || 0
+        const imageUrls = pickImageUrls({ header_image: o.coverUrl })
         return {
           appId: Number(o.storeAppId) || o.storeAppId,
           title: o.title,
           imageUrl: o.coverUrl || null,
+          imageUrls,
+          image: imageUrls[0], // compat com UI atual
           // Return numeric prices (unit currency, not cents). Client will format to selected currency.
           price: priceFinal,
           originalPrice: priceBase > priceFinal ? priceBase : priceFinal,
@@ -145,9 +149,12 @@ export default async function steamRoutes(app: FastifyInstance) {
       const game = gameData.data
       
       // Formatar os dados no padrão esperado pelo mobile
+      const imageUrls = pickImageUrls(game)
       const gameDetails = {
         appId: parseInt(appId),
         name: game.name,
+        imageUrls,
+        image: imageUrls[0], // compat com UI atual
         type: game.type,
         required_age: game.required_age,
         is_free: game.is_free,

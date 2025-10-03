@@ -5,6 +5,7 @@ import { env } from './env.js'
 import { registerErrorHandler } from './middlewares/errorHandler.js'
 import routes from './routes/index.js'
 
+
 export function buildApp() {
   const app = fastify({
     logger: env.NODE_ENV === 'development' ? { transport: { target: 'pino-pretty' } } : true

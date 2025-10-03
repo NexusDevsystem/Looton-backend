@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { getTopDeals, getFilteredDeals } from '../services/offers.service.js'
 import { fetchDealsBoosted, fetchDealsDefault } from '../services/deals.service.js'
+import { pickImageUrls } from '../utils/imageUtils.js'
 
 export default async function dealsRoutes(app: FastifyInstance) {
   // GET /deals - Usando dados da Steam API (que já funcionam)
@@ -104,6 +105,9 @@ export default async function dealsRoutes(app: FastifyInstance) {
         const priceBase = priceBaseCents > 0 ? Number((priceBaseCents / 100).toFixed(2)) : 0
         const priceFinal = priceFinalCents > 0 ? Number((priceFinalCents / 100).toFixed(2)) : 0
 
+        const coverUrl = deal.coverUrl || `https://cdn.akamai.steamstatic.com/steam/apps/${deal.appId}/header.jpg`
+        const imageUrls = pickImageUrls({ header_image: coverUrl })
+
         return {
           _id: deal.appId?.toString() || Math.random().toString(),
           appId: deal.appId,
@@ -114,9 +118,11 @@ export default async function dealsRoutes(app: FastifyInstance) {
           priceFinal,
           discountPct: deal.discountPct,
           steamGenres: mockGenres,
+          imageUrls,
+          image: imageUrls[0], // compat com UI atual
           game: {
             title: deal.title,
-            coverUrl: deal.coverUrl || `https://cdn.akamai.steamstatic.com/steam/apps/${deal.appId}/header.jpg`,
+            coverUrl,
             genres: mockGenres.map(g => g.name),
             tags: []
           },

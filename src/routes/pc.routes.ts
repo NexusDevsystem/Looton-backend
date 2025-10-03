@@ -29,31 +29,143 @@ export default async function pcRoutes(app: FastifyInstance) {
       const variants = new Set<string>()
       variants.add(t)
       variants.add(t.replace(/\s+/g, ''))
-      // Split tokens
+      
+      // Split tokens for individual processing
       const tokens = t.split(' ').filter(Boolean)
       for (const tok of tokens) {
         variants.add(tok)
       }
-      // Extract 3-4 digit numbers (common in GPU/CPU models)
+      
+      // GPU Detection - 3-4 digit numbers (common in GPU models)
       const nums = t.match(/\b(\d{3,4})\b/g) || []
       for (const n of nums) {
         variants.add(n)
+        // NVIDIA variants
         variants.add(`rtx ${n}`)
         variants.add(`geforce ${n}`)
+        variants.add(`gtx ${n}`)
         variants.add(`rtx${n}`)
+        variants.add(`gtx${n}`)
+        variants.add(`nvidia ${n}`)
+        // AMD variants
         variants.add(`rx ${n}`)
         variants.add(`radeon ${n}`)
         variants.add(`rx${n}`)
-      }
-      // Common suffixes
-      const suff = ['ti', 'super', 'xt', 'gddr6', 'gddr6x']
-      for (const n of nums) {
-        for (const sfx of suff) {
+        variants.add(`amd ${n}`)
+        // GPU suffixes
+        const gpuSuff = ['ti', 'super', 'xt', 'xtx', 'gddr6', 'gddr6x']
+        for (const sfx of gpuSuff) {
           variants.add(`${n} ${sfx}`)
           variants.add(`rtx ${n} ${sfx}`)
+          variants.add(`gtx ${n} ${sfx}`)
           variants.add(`rx ${n} ${sfx}`)
         }
       }
+      
+      // CPU Detection - Intel patterns
+      const intelMatch = t.match(/\b(i[3579])\b/g) || []
+      for (const cpu of intelMatch) {
+        variants.add(cpu)
+        variants.add(`intel ${cpu}`)
+        variants.add(`core ${cpu}`)
+        variants.add(`processador ${cpu}`)
+        // Common Intel generations
+        const gens = ['10th', '11th', '12th', '13th', '14th']
+        for (const gen of gens) {
+          variants.add(`${cpu} ${gen}`)
+          variants.add(`${gen} gen ${cpu}`)
+        }
+      }
+      
+      // CPU Detection - AMD Ryzen patterns
+      if (t.includes('ryzen') || /\br[3579]\b/.test(t)) {
+        variants.add('ryzen')
+        variants.add('amd ryzen')
+        variants.add('processador ryzen')
+        const ryzenMatch = t.match(/\br([3579])\b/g) || []
+        for (const r of ryzenMatch) {
+          variants.add(`ryzen ${r}`)
+          variants.add(`r${r}`)
+          variants.add(`amd r${r}`)
+        }
+      }
+      
+      // Memory Detection
+      if (t.includes('ddr') || t.includes('memoria') || t.includes('ram')) {
+        variants.add('memoria')
+        variants.add('memória')
+        variants.add('ram')
+        variants.add('ddr4')
+        variants.add('ddr5')
+        variants.add('memoria ram')
+        variants.add('memória ram')
+      }
+      
+      // Storage Detection
+      if (t.includes('ssd') || t.includes('nvme') || t.includes('m.2')) {
+        variants.add('ssd')
+        variants.add('nvme')
+        variants.add('m.2')
+        variants.add('armazenamento')
+        variants.add('disco')
+        variants.add('storage')
+      }
+      
+      // Motherboard Detection
+      if (t.includes('placa') && (t.includes('mae') || t.includes('mãe')) || t.includes('motherboard')) {
+        variants.add('placa mae')
+        variants.add('placa mãe')
+        variants.add('placa-mae')
+        variants.add('motherboard')
+        variants.add('placa de video') // avoid confusion
+      }
+      
+      // Power Supply Detection
+      if (t.includes('fonte') || t.includes('psu')) {
+        variants.add('fonte')
+        variants.add('psu')
+        variants.add('fonte de alimentacao')
+        variants.add('fonte de alimentação')
+        variants.add('power supply')
+      }
+      
+      // Case Detection
+      if (t.includes('gabinete') || t.includes('case')) {
+        variants.add('gabinete')
+        variants.add('case')
+        variants.add('tower')
+        variants.add('caixa')
+      }
+      
+      // Monitor Detection
+      if (t.includes('monitor') || t.includes('display')) {
+        variants.add('monitor')
+        variants.add('display')
+        variants.add('tela')
+        variants.add('lcd')
+        variants.add('led')
+      }
+      
+      // Peripherals Detection
+      if (t.includes('teclado') || t.includes('mouse') || t.includes('headset') || t.includes('fone')) {
+        if (t.includes('teclado')) {
+          variants.add('teclado')
+          variants.add('keyboard')
+          variants.add('teclado gamer')
+        }
+        if (t.includes('mouse')) {
+          variants.add('mouse')
+          variants.add('mouse gamer')
+          variants.add('rato')
+        }
+        if (t.includes('headset') || t.includes('fone')) {
+          variants.add('headset')
+          variants.add('fone')
+          variants.add('fone de ouvido')
+          variants.add('headphone')
+        }
+      }
+      
       return Array.from(variants).filter(Boolean)
     }
     const matchesSmart = (offer: PcOffer, query: string) => {
@@ -61,7 +173,14 @@ export default async function pcRoutes(app: FastifyInstance) {
       const qv = buildQueryVariants(query)
       if (qv.length === 0) return true
       // Require that at least one variant appears
-      return qv.some((v) => hay.includes(v))
+      const matches = qv.some((v) => hay.includes(v))
+      // Debug logging for search issues
+      if (text && process.env.NODE_ENV === 'development') {
+        console.log(`Search Debug - Query: "${query}"`)
+        console.log(`Variants: [${qv.slice(0, 10).join(', ')}${qv.length > 10 ? '...' : ''}]`)
+        console.log(`Product: "${offer.title}" - Matches: ${matches}`)
+      }
+      return matches
     }
 
     // Raw mode: fetch directly from connectors, no curation/size clamp
