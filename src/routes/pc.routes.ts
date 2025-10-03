@@ -1,8 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { getCurrentPcFeed, rebuildPcFeed } from '../services/pc/aggregate.js'
-import * as pichau from '../services/pc/pichau.js'
 import * as terabyte from '../services/pc/terabyte.js'
-import * as kabum from '../services/pc/kabum.js'
 import type { PcOffer } from '../services/pc/types.js'
 import { env } from '../env.js'
 
@@ -94,9 +92,7 @@ export default async function pcRoutes(app: FastifyInstance) {
         return reply.send(cached.payload)
       }
       const map: Record<string, (o?: any) => Promise<PcOffer[]>> = {
-        pichau: (o?: any) => pichau.fetchDeals(o),
-        terabyte: (o?: any) => terabyte.fetchDeals(o),
-        kabum: (o?: any) => kabum.fetchDeals(o)
+        terabyte: (o?: any) => terabyte.fetchDeals(o)
       }
       const selected = (stores.length ? stores : Object.keys(map)).filter((s) => map[s])
       let raw: PcOffer[] = []
@@ -133,9 +129,7 @@ export default async function pcRoutes(app: FastifyInstance) {
     if (q.refresh === '1' || q.refresh === 1) {
       try {
         await rebuildPcFeed([
-          () => pichau.fetchDeals({ limit: 50 }),
-          () => terabyte.fetchDeals({ limit: 50 }),
-          () => kabum.fetchDeals({ limit: 50 })
+          () => terabyte.fetchDeals({ limit: 50 })
         ])
       } catch (e) {
         req.log.warn({ err: e }, 'failed manual pc rebuild')
