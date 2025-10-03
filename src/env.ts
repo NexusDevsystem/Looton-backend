@@ -32,14 +32,14 @@ const envSchema = z.object({
   ROTATION_FILE: z.string().default('.rotation_memory.json')
   ,
   // PC Hardware deals (no DB)
-  PC_CUR_MIN_DISCOUNT: z.coerce.number().default(10),
+  PC_CUR_MIN_DISCOUNT: z.coerce.number().default(5),
   PC_CUR_ROTATION_COOLDOWN_HOURS: z.coerce.number().default(72),
   PC_CUR_FEED_SIZE: z.coerce.number().default(40),
   PC_CUR_CRON: z.string().default('*/30 * * * *'),
   PC_CACHE_TTL_SECONDS: z.coerce.number().default(900),
   PC_ROTATION_FILE: z.string().default('.pc_rotation.json'),
   // Full-mode caching (raw connectors results) TTL in seconds
-  PC_FULL_CACHE_TTL_SECONDS: z.coerce.number().default(600),
+  PC_FULL_CACHE_TTL_SECONDS: z.coerce.number().default(1800),
   // PC filtering: keep only computer parts and peripherals
   // Comma-separated keyword lists (case-insensitive, accent-insensitive)
   PC_USE_KEYWORD_FILTER: z.coerce.boolean().default(true),

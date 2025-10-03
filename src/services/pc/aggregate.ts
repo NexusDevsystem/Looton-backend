@@ -49,8 +49,8 @@ function dedupeKeepBest(items: PcOffer[]): PcOffer[] {
 function clampDiversity(items: (PcOffer & { score: number })[]): (PcOffer & { score: number })[] {
   const byStore: Record<string, number> = {}
   const byCategory: Record<string, number> = {}
-  const maxStore = Math.ceil(env.PC_CUR_FEED_SIZE * 0.6)
-  const maxCat = Math.ceil(env.PC_CUR_FEED_SIZE * 0.5)
+  const maxStore = Math.ceil(env.PC_CUR_FEED_SIZE * 0.8) // Aumentado de 60% para 80%
+  const maxCat = Math.ceil(env.PC_CUR_FEED_SIZE * 0.7) // Aumentado de 50% para 70%
   const out: (PcOffer & { score: number })[] = []
   for (const it of items) {
     const s = it.store
@@ -107,12 +107,16 @@ export async function rebuildPcFeed(connectors: Array<() => Promise<PcOffer[]>>)
   // filter only computer parts and peripherals
   const filtered = collected.filter(isAllowedOffer)
   console.log('[pc] after keyword filter:', filtered.length)
+  if (filtered.length === 0 && collected.length > 0) {
+    console.warn('[pc] WARNING: All products filtered out by keywords! Original count:', collected.length)
+  }
   // freshness: only keep items from now-slot (they already are)
   const deduped = dedupeKeepBest(filtered)
   console.log('[pc] after dedupe:', deduped.length)
   let scored = scoreItems(deduped, rotation)
+  console.log('[pc] after scoring (min discount check):', scored.length)
   if (deduped.length > 0 && scored.length === 0) {
-    console.warn('[pc] empty after scoring – relaxing filters for this run')
+    console.warn('[pc] WARNING: All products failed min discount requirement – relaxing filters for this run')
     // Relax min discount: compute score with whatever discount info exists
     scored = deduped
       .map((it) => {
@@ -150,6 +154,9 @@ export async function rebuildPcFeed(connectors: Array<() => Promise<PcOffer[]>>)
   }
   const diversified = clampDiversity(scored)
   console.log('[pc] diversified size:', diversified.length)
+  if (diversified.length === 0 && scored.length > 0) {
+    console.warn('[pc] WARNING: All products filtered out by diversity limits! Scored count:', scored.length)
+  }
   const slotDate = new Date().toISOString()
   // update rotation
   for (const it of diversified) {
