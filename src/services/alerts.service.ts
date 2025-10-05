@@ -3,6 +3,7 @@ import { Alert } from '../db/models/Alert.js'
 import { User } from '../db/models/User.js'
 import { Store } from '../db/models/Store.js'
 import { Game } from '../db/models/Game.js'
+import { sendPush } from './notification.service.js'
 
 export async function registerUser(input: { email: string; pushToken?: string }) {
   const exists = await User.findOne({ email: input.email })
@@ -44,9 +45,7 @@ export async function deleteAlert(id: string) {
 }
 
 export async function testNotify({ token, title, body }: { token: string; title: string; body: string }) {
-  // Stub: In production, integrate Expo Push or FCM here
-  console.log('Push to', token, title, body)
-  return true
+  return sendPush(token, title, body, { test: true })
 }
 
 export async function checkAndNotify(gameId: string, offer: { priceFinal: number; discountPct: number; storeId: Types.ObjectId }) {
@@ -66,7 +65,11 @@ export async function checkAndNotify(gameId: string, offer: { priceFinal: number
       const userRaw = await User.findById(alert.userId).lean()
       const user = userRaw as ({ pushToken?: string } | null)
       if (user?.pushToken) {
-        await testNotify({ token: user.pushToken, title: 'Looton: oferta atingiu preço', body: `${game.title} por R$ ${offer.priceFinal} na ${store.name}` })
+        await sendPush(user.pushToken, 'Looton: oferta atingiu preço', `${game.title} por R$ ${offer.priceFinal} na ${store.name}`, { 
+          gameId: game._id.toString(), 
+          offerId: `${offer.storeId}_${gameId}`,
+          type: 'price_alert' 
+        })
       }
     }
   }
