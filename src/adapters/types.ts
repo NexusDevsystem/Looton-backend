@@ -1,11 +1,16 @@
 export type OfferDTO = {
-  store: 'steam' | 'epic' | 'gog'
+  store: 'steam' | 'epic'
   storeAppId: string
   title: string
   url: string
+  // NEW: cents-based fields (recommended)
+  priceBaseCents: number | null
+  priceFinalCents: number | null
+  discountPct: number | null
+  currency?: string
+  // LEGACY: reais-based fields (for backward compatibility)
   priceBase: number
   priceFinal: number
-  discountPct: number
   isActive: boolean
   coverUrl?: string
   genres?: string[]

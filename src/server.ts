@@ -1,21 +1,18 @@
 import { buildApp } from './app.js'
 import { env } from './env.js'
-import { connectMongo } from './db/mongoose.js'
-import { startJobs } from './jobs/index.js'
-import { startCurationJob } from './jobs/curation.js'
-import { startPcCurationJob } from './jobs/pcCuration.js'
 
 async function main() {
-  // Optional DB connect for other features; curation itself is DB-less
-  try { await connectMongo() } catch {}
+  // No database connection - using live APIs only as requested
   const app = buildApp()
-  if (env.NODE_ENV !== 'test') {
-    await startJobs()
-    startCurationJob()
-    startPcCurationJob()
-  }
+  // Temporarily disable curation jobs to prevent rate limiting issues
+  // if (env.NODE_ENV !== 'test') {
+  //   await startJobs()
+  //   startCurationJob()  
+  //   startPcCurationJob()
+  // }
   await app.listen({ port: env.PORT, host: '0.0.0.0' })
   console.log(`Backend rodando em http://0.0.0.0:${env.PORT}`)
+  console.log(`Acessível em: http://192.168.1.216:${env.PORT}`)
 }
 
 main().catch((err) => {

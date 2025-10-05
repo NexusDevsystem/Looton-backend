@@ -1,29 +1,20 @@
-import { OfferDTO, StoreAdapter } from './types.js'
-import { env } from '../env.js'
+﻿import { OfferDTO, StoreAdapter } from './types.js'
 
-const mock: OfferDTO[] = [
-  {
-    store: 'epic',
-    storeAppId: 'fortnite',
-    title: 'Fortnite Crew Pack',
-    url: 'https://store.epicgames.com/en-US/p/fortnite',
-    priceBase: 29.99,
-    priceFinal: 19.99,
-    discountPct: 33,
-    isActive: true
-    , genres: ['Ação', 'Multiplayer']
-  }
-]
-
+// Epic adapter temporariamente desabilitado
+// Retorna arrays vazios para não interferir no sistema
 export const epicAdapter: StoreAdapter = {
   async fetchTrending() {
-    return env.USE_MOCK_ADAPTERS ? mock : []
+    // Epic temporariamente desabilitado - focar apenas na Steam
+    return []
   },
+
   async search(query: string) {
-    const q = query.toLowerCase()
-    return (env.USE_MOCK_ADAPTERS ? mock : []).filter((o) => o.title.toLowerCase().includes(q))
+    // Epic temporariamente desabilitado - focar apenas na Steam
+    return []
   },
+
   async fetchByIds(ids: string[]) {
-    return (env.USE_MOCK_ADAPTERS ? mock : []).filter((o) => ids.includes(o.storeAppId))
+    // Epic temporariamente desabilitado - focar apenas na Steam
+    return []
   }
 }

@@ -23,7 +23,7 @@ docker compose up -d
 
 - GET /health
 - GET /deals?minDiscount=&limit=
-- GET /search?q=&stores=steam,epic
+- GET /search?q=&stores=steam (Epic temporariamente desativada para melhorias)
 - GET /games/:id/offers
 - GET /games/:id/history
 - POST /users

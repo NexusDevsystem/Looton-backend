@@ -1,132 +1,177 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { steamAdapter } from '../adapters/steam.adapter.js'
-import { fetchSteamAppPrice } from '../services/steam-api.service.js'
-import { epicAdapter } from '../adapters/epic.adapter.js'
-import { gogAdapter } from '../adapters/gog.adapter.js'
+import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
+
+
+// Cache de busca por cc|l|q por 5 minutos
+const cache = new MemoryCache<string, any[]>(ttlSecondsToMs(300))
+
+function ck(cc: string, l: string, q: string) {
+  return `${cc}|${l}|${q}`.toLowerCase()
+}
+
+function normalizeLocale(l?: string): string {
+  if (!l) return 'pt-BR'
+  return l
+}
+
+function normalizeCC(cc?: string): string {
+  return (cc || 'BR').toUpperCase()
+}
+
+function isTextMatchScore(q: string, title: string) {
+  const a = q.trim().toLowerCase()
+  const b = (title || '').trim().toLowerCase()
+  if (!a || !b) return 0
+  if (a === b) return 2
+  if (b.startsWith(a)) return 1
+  return 0
+}
+
+async function fetchJson(url: string) {
+  const res = await fetch(url)
+  if (!res.ok) return undefined
+  return res.json()
+}
+
+async function enrichApp(appid: number, cc: string, l: string) {
+  const data = await fetchJson(`https://store.steampowered.com/api/appdetails/?appids=${appid}&cc=${cc}&l=${l}`)
+  const node = data?.[String(appid)]
+  if (!node?.success) return undefined
+  const d = node.data
+  const type = (d?.type as string) || 'game'
+  const title = d?.name as string
+  const header = d?.header_image as string | undefined
+  const url = `https://store.steampowered.com/app/${appid}/`
+  const pov = d?.price_overview
+  
+  // Extract genres/categories from Steam API
+  const genres = (d?.genres || []).map((g: any) => g?.description || '').filter(Boolean)
+  const categories = (d?.categories || []).map((c: any) => c?.description || '').filter(Boolean)
+  const allTags = [...new Set([...genres, ...categories])]
+
+  if (type === 'game') {
+    if (d?.is_free || !pov) {
+      return { id: `app:${appid}`, kind: 'game', title, image: header, currency: pov?.currency, priceOriginalCents: null, priceFinalCents: null, discountPct: null, tags: allTags }
+    }
+    const initial = typeof pov.initial === 'number' ? pov.initial : null
+    const discount = typeof pov.discount_percent === 'number' ? pov.discount_percent : null
+    const final = typeof pov.final === 'number' ? pov.final : (initial !== null && discount !== null ? Math.round(initial * (100 - discount) / 100) : null)
+    return { id: `app:${appid}`, kind: 'game', title, image: header, currency: pov?.currency, priceOriginalCents: initial, priceFinalCents: final, discountPct: discount, tags: allTags }
+  }
+
+  if (type === 'dlc') {
+    if (!pov) {
+      return { id: `app:${appid}`, kind: 'dlc', title, image: header, currency: null, priceOriginalCents: null, priceFinalCents: null, discountPct: null, tags: allTags }
+    }
+    const initial = typeof pov.initial === 'number' ? pov.initial : null
+    const discount = typeof pov.discount_percent === 'number' ? pov.discount_percent : null
+    const final = typeof pov.final === 'number' ? pov.final : (initial !== null && discount !== null ? Math.round(initial * (100 - discount) / 100) : null)
+    return { id: `app:${appid}`, kind: 'dlc', title, image: header, currency: pov?.currency, priceOriginalCents: initial, priceFinalCents: final, discountPct: discount, tags: allTags }
+  }
+
+  // Outros tipos tratados como game (sem preço se ausente)
+  if (!pov) {
+    return { id: `app:${appid}`, kind: 'game', title, image: header, currency: null, priceOriginalCents: null, priceFinalCents: null, discountPct: null, tags: allTags }
+  }
+  return { id: `app:${appid}`, kind: 'game', title, image: header, currency: pov?.currency, priceOriginalCents: pov.initial ?? null, priceFinalCents: pov.final ?? null, discountPct: pov.discount_percent ?? null, tags: allTags }
+}
 
 export default async function searchRoutes(app: FastifyInstance) {
-  // /search - aggregated adapter search (NO DB filtering/persistence)
+  // /search - Leve e confiável (Steam-only), com paginação e cache
   app.get('/search', async (req: any, reply: any) => {
-    console.log('Query recebida:', req.query);
-    console.log('Body recebido:', req.body);
-
-    const schema = z.object({ 
-      q: z.string().min(1), 
-      stores: z.string().optional(),
+    const schema = z.object({
+      q: z.string().min(2),
       page: z.coerce.number().min(1).optional(),
-      limit: z.coerce.number().min(1).max(200).optional()
+      limit: z.coerce.number().min(1).max(50).optional(),
+      cc: z.string().length(2).optional(),
+      l: z.string().optional(),
     })
 
     try {
-      const { q, stores, page, limit } = schema.parse(req.query)
-      const storeList = stores ? stores.split(',').map((s: string) => s.trim()) : undefined
+      const { q, page, limit, cc: ccRaw, l: lRaw } = schema.parse(req.query)
+      const cc = normalizeCC(ccRaw)
+      const l = normalizeLocale(lRaw)
+      const pageNum = page || 1
+      const pageSize = limit || 20
 
-      const adapters: Record<string, any> = {
-        steam: steamAdapter,
-        epic: epicAdapter,
-        gog: gogAdapter
+      const cacheKey = ck(cc, l, q)
+      const cached = cache.get(cacheKey)
+      if (cached && cached.length) {
+        const start = (pageNum - 1) * pageSize
+        return reply.send(cached.slice(start, start + pageSize))
       }
 
-      const list = storeList && storeList.length ? storeList : Object.keys(adapters)
+      // 1) Buscar candidatos leves via storesearch
+      const term = encodeURIComponent(q.trim())
+      const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${term}&cc=${cc}&l=${encodeURIComponent(l)}`
+      let data: any = await fetchJson(searchUrl)
+      let items: any[] = Array.isArray(data?.items) ? data.items : []
 
-      const results: any[] = []
-      for (const s of list) {
-        const adapter = adapters[s]
-        if (!adapter) continue
-        try {
-          let items = await adapter.search(q)
-          // Some adapter endpoints return { games: [...] } (DB-style); normalize to array
-          if (items && !Array.isArray(items) && Array.isArray(items.games)) {
-            items = items.games
-          }
-          console.log(`Resultados do adaptador ${s}:`, items);
-          results.push(...(items || []))
-        } catch (err) {
-          console.error(`Erro no adapter ${s} durante search:`, err)
+      // Fallback: steamcommunity SearchApps se vazio
+      if (!items.length) {
+        const comm = await fetchJson(`https://steamcommunity.com/actions/SearchApps/${term}`)
+        if (Array.isArray(comm)) {
+          items = comm.map((x: any) => ({ id: x.appid, name: x.name }))
         }
       }
 
-      console.log('Resultados antes da deduplicação:', results);
+      if (!items.length) return reply.send([])
 
-      // Normalize keys for deduplication and ensure no missing identifiers
-      const normalized: any[] = results.map((it, idx) => {
-        const store = it.store || (it.storeName || it.store?.name) || 'unknown'
-        const storeAppId = (it.storeAppId || it.id || it.appid || it.packageid || it.bundleid || String(it._id) || String(idx))
-        return { ...it, store, storeAppId }
+      // 2) Enriquecer somente os que vão ser exibidos (primeira página + próximos 20)
+      const maxEnrich = Math.min(items.length, pageSize + 20)
+      const slice = items.slice(0, maxEnrich)
+
+      // Limite de concorrência: 8
+      const conc = 8
+      const out: any[] = []
+      let idx = 0
+      await Promise.all(Array.from({ length: conc }).map(async () => {
+        while (idx < slice.length) {
+          const i = idx++
+          const it = slice[i]
+          const appid = Number(it?.id)
+          if (!Number.isFinite(appid)) continue
+          try {
+            const n = await enrichApp(appid, cc, l)
+            if (n) out.push(n)
+          } catch (e) {
+            // log e segue
+          }
+        }
+      }))
+
+      // 3) Dedup por id
+      const uniq = new Map<string, any>()
+      for (const x of out) {
+        if (!uniq.has(x.id)) uniq.set(x.id, x)
+      }
+      let enriched = Array.from(uniq.values())
+
+      // 4) Ordenação: match texto desc (exato > prefixo > resto), depois desconto desc, depois menor preço final
+      const qLower = q.trim().toLowerCase()
+      enriched.sort((a, b) => {
+        const sa = isTextMatchScore(qLower, a.title)
+        const sb = isTextMatchScore(qLower, b.title)
+        if (sb !== sa) return sb - sa
+        const da = typeof a.discountPct === 'number' ? a.discountPct : -1
+        const db = typeof b.discountPct === 'number' ? b.discountPct : -1
+        if (db !== da) return db - da
+        const fa = typeof a.priceFinalCents === 'number' ? a.priceFinalCents : Number.MAX_SAFE_INTEGER
+        const fb = typeof b.priceFinalCents === 'number' ? b.priceFinalCents : Number.MAX_SAFE_INTEGER
+        return fa - fb
       })
 
-      // Deduplicate by store + storeAppId/title with safe fallback
-      const seen = new Set<string>()
-      const deduped: any[] = []
-      try {
-        for (const it of normalized) {
-          const key = `${it.store}:${it.storeAppId || it.title}`
-          if (seen.has(key)) continue
-          seen.add(key)
-          deduped.push(it)
-        }
-      } catch (e) {
-        // If deduplication fails for any reason, fallback to normalized results
-        console.error('Erro durante deduplicação, retornando resultados normalizados:', e)
-        const lim = limit || 50
-        return reply.send(normalized.slice(0, lim))
-      }
+      // 5) Cache curto (não cachear vazio)
+      if (enriched.length) cache.set(cacheKey, enriched)
 
-      console.log('Resultados agregados normalizados:', normalized.length, 'items')
-      console.log('Resultados deduplicados:', deduped.length, 'items')
+      // 6) Paginar
+      const start = (pageNum - 1) * pageSize
+      const pageItems = enriched.slice(start, start + pageSize)
 
-      const lim = limit || 50
-
-      // Try to enrich steam items with real prices (limit to avoid heavy load)
-      const finalSlice = deduped.slice(0, lim)
-      try {
-        const maxFetch = 8
-        let fetched = 0
-        for (let i = 0; i < finalSlice.length && fetched < maxFetch; i++) {
-          const it = finalSlice[i]
-          if (!it) continue
-          const store = (it.store || '').toLowerCase()
-          if (store === 'steam') {
-            const idNum = parseInt(String(it.storeAppId || it.id || ''), 10)
-            if (!Number.isNaN(idNum)) {
-              try {
-                const priceData = await fetchSteamAppPrice(idNum)
-                if (priceData) {
-                  it.priceBase = (priceData.priceBaseCents || 0) / 100
-                  it.priceFinal = (priceData.priceFinalCents || 0) / 100
-                  it.discountPct = priceData.discountPct || 0
-                }
-              } catch (e) {
-                console.error('Erro ao enriquecer preço Steam para', idNum, e)
-              }
-              fetched++
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Erro ao tentar enriquecer preços:', e)
-      }
-
-      // Fallback: se não houver resultados, tente buscar diretamente na Steam
-      if ((deduped.length === 0 || normalized.length === 0) && adapters.steam) {
-        try {
-          console.log('Nenhum resultado agregado — tentando fallback direto na Steam')
-          const steamItems = await adapters.steam.search(q)
-          const fallback = (steamItems || []).map((it: any, idx: number) => ({
-            ...it,
-            store: it.store || 'steam',
-            storeAppId: it.storeAppId || it.id || String(it.appid) || String(idx)
-          }))
-          return reply.send(fallback.slice(0, lim))
-        } catch (e) {
-          console.error('Erro no fallback Steam:', e)
-        }
-      }
-
-      return reply.send(finalSlice)
+      return reply.send(pageItems)
     } catch (err) {
-      console.error('Erro na rota /search (direct adapters):', err)
+      console.error('Erro na rota /search (nova lógica):', err)
       return reply.status(500).send({ error: 'Erro interno do servidor' })
     }
   })

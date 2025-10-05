@@ -1,168 +1,110 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { getTopDeals, getFilteredDeals } from '../services/offers.service.js'
-import { fetchDealsBoosted, fetchDealsDefault } from '../services/deals.service.js'
-import { pickImageUrls } from '../utils/imageUtils.js'
+import { fetchConsolidatedDeals } from '../services/consolidated-deals.service.js'
 
 export default async function dealsRoutes(app: FastifyInstance) {
-  // GET /deals - Usando dados da Steam API (que já funcionam)
+
+
+  // GET /deals - Usando dados consolidados de Steam e Epic Games
   app.get('/deals', async (req: any, reply: any) => {
     const schema = z.object({
       limit: z.coerce.number().min(1).max(1000).optional(),
       boost: z.string().optional(), // Parâmetro para preferências de gênero
+      cc: z.string().length(2).optional(),
+      l: z.string().optional(),
     })
-    const { limit, boost } = schema.parse(req.query)
+    const { limit, boost, cc, l } = schema.parse(req.query)
     
     try {
-      // Steam API instável - usando dados mock temporários
-      console.log('🔥 Tentando Steam API primeiro...')
-      let deals: any[] = []
+      console.log('🎮 Buscando deals com preços ao vivo da Steam...')
       
-      try {
-        const { fetchSteamFeatured } = await import('../services/steam-api.service.js')
-        deals = await fetchSteamFeatured()
-        console.log(`Steam API retornou: ${deals.length} jogos`)
-      } catch (steamError) {
-        console.log('Steam API falhou, usando dados mock...')
-        deals = []
-      }
+      // Usar serviço consolidado que já busca preços atuais
+      let deals = await fetchConsolidatedDeals(limit || 20, { cc, l })
       
-      // Se Steam API falhou, usar dados mock
+      console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
+      
+      // Se não houver deals, retornar array vazio
       if (deals.length === 0) {
-        deals = [
-          {
-            appId: 1174180,
-            title: "Red Dead Redemption 2",
-            url: "https://store.steampowered.com/app/1174180/",
-            coverUrl: "https://cdn.akamai.steamstatic.com/steam/apps/1174180/header.jpg",
-            priceBaseCents: 29990,
-            priceFinalCents: 7497,
-            discountPct: 75
-          },
-          {
-            appId: 1086940,
-            title: "Baldur's Gate 3",
-            url: "https://store.steampowered.com/app/1086940/",
-            coverUrl: "https://cdn.akamai.steamstatic.com/steam/apps/1086940/header.jpg",
-            priceBaseCents: 19999,
-            priceFinalCents: 14999,
-            discountPct: 25
-          },
-          {
-            appId: 1517290,
-            title: "Battlefield 2042",
-            url: "https://store.steampowered.com/app/1517290/",
-            coverUrl: "https://cdn.akamai.steamstatic.com/steam/apps/1517290/header.jpg",
-            priceBaseCents: 29999,
-            priceFinalCents: 5999,
-            discountPct: 80
-          },
-          {
-            appId: 1551360,
-            title: "Forza Horizon 5",
-            url: "https://store.steampowered.com/app/1551360/",
-            coverUrl: "https://cdn.akamai.steamstatic.com/steam/apps/1551360/header.jpg",
-            priceBaseCents: 29999,  
-            priceFinalCents: 8999,
-            discountPct: 70
-          },
-          {
-            appId: 413150,
-            title: "Stardew Valley",
-            url: "https://store.steampowered.com/app/413150/",
-            coverUrl: "https://cdn.akamai.steamstatic.com/steam/apps/413150/header.jpg",
-            priceBaseCents: 4999,
-            priceFinalCents: 2499,
-            discountPct: 50
-          }
-        ]
-        console.log('Usando dados mock temporários')
+        return reply.send([])
       }
       
-      // Converter para estrutura que o frontend espera (sem buscar gêneros por enquanto para não sobrecarregar)
-      const enrichedDeals = deals.slice(0, limit ?? 40).map((deal: any) => {
-        // Gêneros mockados baseados no título para teste
+      // Converter os deals consolidados para o formato que o frontend espera
+      const formattedDeals = deals.map((deal: any) => {
+        // Encontrar a loja com REALMENTE o menor preço válido
+        const bestStore = deal.stores
+          // Permitir preços 0 (gratuitos) e valores válidos não negativos
+          .filter((s: any) => typeof s.priceFinal === 'number' && s.priceFinal >= 0)
+          .sort((a: any, b: any) => a.priceFinal - b.priceFinal)[0] || deal.stores[0]
+        
+        // Usar ID da loja com melhor preço para consistência
+  const appId = bestStore.storeAppId
+  const uniqueId = deal.id || appId // usa id consolidado (app:/package:/bundle:)
+        
+        // Preços corretos da loja com melhor preço - bestStore já tem preços em reais
+  const priceBaseCents = Math.round(((bestStore.priceBase ?? bestStore.priceFinal ?? 0) as number) * 100)
+  const priceFinalCents = Math.round(((bestStore.priceFinal ?? 0) as number) * 100)
+        
+        // Gêneros baseados no título
         let mockGenres: Array<{ id: string; name: string }> = []
         const title = deal.title.toLowerCase()
         
-        if (title.includes('red dead') || title.includes('gta') || title.includes('battlefield')) {
+        if (title.includes('cyberpunk') || title.includes('grand theft') || title.includes('borderlands')) {
           mockGenres = [{ id: '1', name: 'Ação' }, { id: '2', name: 'Aventura' }]
-        } else if (title.includes('baldur') || title.includes('witcher') || title.includes('divinity')) {
+        } else if (title.includes('witcher') || title.includes('baldur') || title.includes('divinity')) {
           mockGenres = [{ id: '3', name: 'RPG' }, { id: '2', name: 'Aventura' }]
-        } else if (title.includes('forza') || title.includes('racing') || title.includes('driver')) {
-          mockGenres = [{ id: '6', name: 'Corrida' }, { id: '9', name: 'Esportes' }]
-        } else if (title.includes('civilization') || title.includes('total war') || title.includes('age of')) {
-          mockGenres = [{ id: '10', name: 'Estratégia' }]
-        } else if (title.includes('stardew') || title.includes('farm') || title.includes('sim')) {
-          mockGenres = [{ id: '23', name: 'Indie' }, { id: '18', name: 'Simulação' }]
+        } else if (title.includes('fortnite') || title.includes('rocket league') || title.includes('fall guys')) {
+          mockGenres = [{ id: '4', name: 'Multiplayer' }, { id: '5', name: 'Casual' }]
+        } else if (title.includes('red dead') || title.includes('gta') || title.includes('battlefield')) {
+          mockGenres = [{ id: '1', name: 'Ação' }, { id: '2', name: 'Aventura' }]
+        } else if (title.includes('elden ring') || title.includes('dark souls')) {
+          mockGenres = [{ id: '1', name: 'Ação' }, { id: '3', name: 'RPG' }]
         } else {
-          mockGenres = [{ id: '1', name: 'Ação' }] // Default
+          mockGenres = [{ id: '1', name: 'Ação' }]
         }
         
-        // Precise pricing from cents
-        const priceBaseCents = Number(deal.priceBaseCents || 0)
-        const priceFinalCents = Number(deal.priceFinalCents || 0)
-        const priceBase = priceBaseCents > 0 ? Number((priceBaseCents / 100).toFixed(2)) : 0
-        const priceFinal = priceFinalCents > 0 ? Number((priceFinalCents / 100).toFixed(2)) : 0
-
-        const coverUrl = deal.coverUrl || `https://cdn.akamai.steamstatic.com/steam/apps/${deal.appId}/header.jpg`
-        const imageUrls = pickImageUrls({ header_image: coverUrl })
-
         return {
-          _id: deal.appId?.toString() || Math.random().toString(),
-          appId: deal.appId,
-          url: deal.url,
+          _id: uniqueId,
+          appId: parseInt(appId) || Math.floor(Math.random() * 999999),
+          url: bestStore.url,
           priceBaseCents,
           priceFinalCents,
-          priceBase,
-          priceFinal,
-          discountPct: deal.discountPct,
+          priceBase: Number((priceBaseCents / 100).toFixed(2)),
+          priceFinal: Number((priceFinalCents / 100).toFixed(2)),
+          discountPct: bestStore.discountPct || 0,
+          currency: deal.currency || 'BRL',
           steamGenres: mockGenres,
-          imageUrls,
-          image: imageUrls[0], // compat com UI atual
+          imageUrls: deal.coverUrl ? [`/thumb?url=${encodeURIComponent(deal.coverUrl)}&w=640`] : [],
+          image: deal.coverUrl ? `/thumb?url=${encodeURIComponent(deal.coverUrl)}&w=640` : '',
           game: {
             title: deal.title,
-            coverUrl,
-            genres: mockGenres.map(g => g.name),
-            tags: []
+            coverUrl: deal.coverUrl,
+            genres: deal.genres || mockGenres.map(g => g.name),
+            tags: deal.tags || []
           },
           store: {
-            name: 'Steam'
+            name: bestStore.store === 'steam' ? 'Steam' : bestStore.store === 'epic' ? 'Epic Games' : 'Unknown'
+          },
+          // Informações sobre múltiplas lojas para exibir no card
+          totalStores: deal.totalStores || 1,
+          allStores: deal.stores.map((s: any) => ({
+            name: s.store === 'steam' ? 'Steam' : s.store === 'epic' ? 'Epic Games' : s.store,
+            price: Number((s.priceFinal || 0).toFixed(2)),
+            priceBase: Number((s.priceBase || 0).toFixed(2)),
+            discount: s.discountPct || 0,
+            url: s.url,
+            storeAppId: s.storeAppId
+          })),
+          // Para debug - dados brutos do deal consolidado
+          originalDeal: {
+            id: deal.id,
+            title: deal.title,
+            bestStore: deal.bestPrice?.store || 'steam'
           }
         }
       })
-
-      // Se boost foi fornecido, aplicar priorização
-      if (boost && boost.length > 0) {
-        const preferredGenres = boost.split(',').map(g => g.trim().toLowerCase())
-        
-        const boostedDeals = enrichedDeals.map((deal: any) => {
-          let score = deal.discountPct // Score base = desconto
-          
-          // Boost para jogos com gêneros preferidos
-          if (deal.steamGenres && deal.steamGenres.length > 0) {
-            const hasPreferredGenre = deal.steamGenres.some((genre: any) => 
-              preferredGenres.some(preferred => 
-                genre.name.toLowerCase().includes(preferred) ||
-                preferred.includes(genre.name.toLowerCase())
-              )
-            )
-            
-            if (hasPreferredGenre) {
-              score += 50 // Boost significativo para gêneros preferidos
-            }
-          }
-          
-          return { ...deal, score }
-        })
-        
-        // Ordenar por score (maior primeiro)
-        boostedDeals.sort((a: any, b: any) => (b.score || 0) - (a.score || 0))
-        
-        return reply.send(boostedDeals)
-      }
       
-      return reply.send(enrichedDeals)
+      // Retornar array diretamente como o frontend espera
+      return reply.send(formattedDeals)
       
     } catch (error) {
       console.error('Erro ao buscar deals:', error)
@@ -182,8 +124,59 @@ export default async function dealsRoutes(app: FastifyInstance) {
       limit: z.coerce.number().min(1).max(100).optional()
     })
 
-    const filters = schema.parse(req.query)
-    const deals = await getFilteredDeals(filters)
-    return reply.send(deals)
+    // TEMPORARIAMENTE DESABILITADO - usar apenas /deals principal
+    return reply.send([])
+  })
+
+  // GET /deals/consolidated - Ofertas consolidadas de múltiplas lojas
+  app.get('/deals/consolidated', async (req: any, reply: any) => {
+    const schema = z.object({
+      limit: z.coerce.number().min(1).max(100).default(50)
+    })
+    
+    const { limit } = schema.parse(req.query)
+    
+    try {
+  const consolidatedDeals = await fetchConsolidatedDeals(limit)
+      
+      // Converter para formato compatível com o frontend
+      const formattedDeals = consolidatedDeals.map(deal => ({
+        _id: deal.id,
+        appId: deal.stores[0]?.storeAppId || deal.id,
+        title: deal.title,
+        url: deal.stores[0]?.url || '#',
+        coverUrl: deal.coverUrl,
+        imageUrls: deal.coverUrl ? [deal.coverUrl] : [],
+        image: deal.coverUrl,
+  priceBase: Math.round((deal.bestPrice?.price ?? 0) * 100), // Frontend espera em centavos
+  priceFinal: Math.round((deal.bestPrice?.price ?? 0) * 100),
+  priceBaseCents: deal.stores.reduce((max, store) => Math.max(max, Math.round((store.priceBase ?? 0) * 100)), 0),
+  priceFinalCents: Math.round((deal.bestPrice?.price ?? 0) * 100),
+  discountPct: deal.bestPrice?.discountPct ?? 0,
+        steamGenres: deal.genres?.map((genre, index) => ({ id: index.toString(), name: genre })) || [],
+        game: {
+          title: deal.title,
+          coverUrl: deal.coverUrl,
+          genres: deal.genres || [],
+          tags: deal.tags || []
+        },
+        stores: deal.stores.map(store => ({
+          name: store.store.charAt(0).toUpperCase() + store.store.slice(1),
+          url: store.url,
+          price: store.priceFinal,
+          priceBase: store.priceBase,
+          discountPct: store.discountPct,
+          storeAppId: store.storeAppId
+        })),
+        totalStores: deal.totalStores,
+        bestStore: deal.bestPrice.store
+      }))
+
+      return reply.send(formattedDeals)
+      
+    } catch (error) {
+      console.error('❌ Erro ao buscar ofertas consolidadas:', error)
+      return reply.code(500).send({ error: 'Failed to fetch consolidated deals' })
+    }
   })
 }

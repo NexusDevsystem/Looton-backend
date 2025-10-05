@@ -29,7 +29,7 @@ export async function upsertOffersAndNotify(list: OfferDTO[]) {
         tags: dto.tags || []
       })
     } else {
-      // Update genres and tags if provided
+      // Update genres, tags, and coverUrl if provided
       let shouldUpdate = false
       if (dto.genres && dto.genres.length > 0) {
         game.genres = dto.genres
@@ -37,6 +37,11 @@ export async function upsertOffersAndNotify(list: OfferDTO[]) {
       }
       if (dto.tags && dto.tags.length > 0) {
         game.tags = dto.tags
+        shouldUpdate = true
+      }
+      // Update coverUrl if it's provided and different from current (or current is empty)
+      if (dto.coverUrl && (dto.coverUrl !== game.coverUrl || !game.coverUrl)) {
+        game.coverUrl = dto.coverUrl
         shouldUpdate = true
       }
       if (shouldUpdate) {

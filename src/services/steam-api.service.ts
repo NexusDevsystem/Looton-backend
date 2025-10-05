@@ -1,4 +1,6 @@
 // Serviço para chamadas reais da Steam API - conforme especificações do usuário
+
+// Maintain the old interface for backward compatibility but use the new implementation
 export interface SteamPriceResponse {
   source: 'app' | 'package' | 'bundle'
   appId: number
@@ -11,7 +13,9 @@ export interface SteamPriceResponse {
   currency: string
   priceFinalBRL: string
   url: string
+  coverUrl?: string
   genres?: string[]
+  tags?: string[]
 }
 
 export interface SteamFeaturedItem {
@@ -31,72 +35,76 @@ export interface SteamFeaturedItem {
 const USER_AGENT = 'Looton/1.0'
 
 function centsToBRLString(cents: number): string {
-  return (cents / 100).toLocaleString('pt-BR', {
+  // Convert integer cents to properly formatted BRL string
+  const reais = cents / 100;
+  return reais.toLocaleString('pt-BR', {
     style: 'currency',
     currency: 'BRL'
-  })
+  });
 }
 
-async function fetchWithHeaders(url: string, options: RequestInit = {}) {
-  return fetch(url, {
-    ...options,
-    headers: {
-      'User-Agent': USER_AGENT,
-      'Accept-Language': 'pt-BR,pt;q=0.9',
-      ...options.headers
-    }
-  })
-}
-
+// Keep the original function that fetches real prices from Steam
 export async function fetchSteamAppPrice(appId: number): Promise<SteamPriceResponse | null> {
   try {
     // Tentar app primeiro
-    const appUrl = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=br&l=portuguese`
-    const appResponse = await fetchWithHeaders(appUrl)
+    const appUrl = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=BR&l=pt-BR`  // Use BR region
+    const appResponse = await fetch(appUrl, { 
+      headers: { 'User-Agent': 'Looton/1.0' } 
+    })
     const appData = await appResponse.json()
     
     const gameData = appData[appId]
     if (gameData?.success && gameData?.data?.price_overview) {
       const price = gameData.data.price_overview
       const genres = (gameData.data.genres || []).map((g: any) => g.description || g.description || g.id || g) as string[]
+      const coverUrl = gameData.data.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`
+      const tags = (gameData.data.categories || []).map((c: any) => c.description || c.name) as string[]
       return {
         source: 'app',
         appId,
         title: gameData.data.name,
-        priceBaseCents: price.initial || price.final,
-        priceFinalCents: price.final,
+        priceBaseCents: (price.initial || price.final) * 100,  // Convert to cents properly
+        priceFinalCents: price.final * 100,  // Convert to cents properly
         discountPct: price.discount_percent || 0,
         currency: price.currency || 'BRL',
         priceFinalBRL: centsToBRLString(price.final),
         url: `https://store.steampowered.com/app/${appId}/`,
-        genres
+        coverUrl,
+        genres,
+        tags
       }
     }
 
     // Fallback para packages se existe
     if (gameData?.success && gameData?.data?.packages?.length > 0) {
       const packageId = gameData.data.packages[0]
-      const packageUrl = `https://store.steampowered.com/api/packagedetails?packageids=${packageId}&cc=br&l=portuguese`
-      const packageResponse = await fetchWithHeaders(packageUrl)
+      const packageUrl = `https://store.steampowered.com/api/packagedetails?packageids=${packageId}&cc=BR&l=pt-BR`  // Use BR region
+      const packageResponse = await fetch(packageUrl, { 
+        headers: { 'User-Agent': 'Looton/1.0' } 
+      })
       const packageData = await packageResponse.json()
       
       const pkgData = packageData[packageId]
       if (pkgData?.success && pkgData?.data?.price) {
         const price = pkgData.data.price
-        const finalCents = price.final_with_tax || price.final_amount || price.final
-        const baseCents = price.initial_with_tax || price.initial_amount || price.individual || finalCents
+        const finalValue = price.final_with_tax || price.final_amount || price.final
+        const baseValue = price.initial_with_tax || price.initial_amount || price.individual || finalValue
         
+        const coverUrl = pkgData.data.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`
+        const tags = (pkgData.data.categories || []).map((c: any) => c.description || c.name) as string[]
         return {
           source: 'package',
           appId,
           packageId,
           title: pkgData.data.name,
-          priceBaseCents: baseCents,
-          priceFinalCents: finalCents,
+          priceBaseCents: baseValue * 100,  // Convert to cents properly
+          priceFinalCents: finalValue * 100,  // Convert to cents properly
           discountPct: price.discount_percent || 0,
           currency: price.currency || 'BRL',
-          priceFinalBRL: centsToBRLString(finalCents),
-          url: `https://store.steampowered.com/sub/${packageId}/`
+          priceFinalBRL: centsToBRLString(finalValue),
+          url: `https://store.steampowered.com/sub/${packageId}/`,
+          coverUrl,
+          tags
         }
       }
     }
@@ -104,27 +112,33 @@ export async function fetchSteamAppPrice(appId: number): Promise<SteamPriceRespo
     // Fallback para bundles se existe
     if (gameData?.success && gameData?.data?.bundle?.length > 0) {
       const bundleId = gameData.data.bundle[0]
-      const bundleUrl = `https://store.steampowered.com/api/bundledetails?bundleids=${bundleId}&cc=br&l=portuguese`
-      const bundleResponse = await fetchWithHeaders(bundleUrl)
+      const bundleUrl = `https://store.steampowered.com/api/bundledetails?bundleids=${bundleId}&cc=BR&l=pt-BR`  // Use BR region
+      const bundleResponse = await fetch(bundleUrl, { 
+        headers: { 'User-Agent': 'Looton/1.0' } 
+      })
       const bundleData = await bundleResponse.json()
       
       const bundData = bundleData[bundleId]
       if (bundData?.success && bundData?.data?.price) {
         const price = bundData.data.price
-        const finalCents = price.final_with_tax || price.final_amount || price.final
-        const baseCents = price.initial_with_tax || price.initial_amount || price.individual || finalCents
+        const finalValue = price.final_with_tax || price.final_amount || price.final
+        const baseValue = price.initial_with_tax || price.initial_amount || price.individual || finalValue
         
+        const coverUrl = bundData.data.header_image || `https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`
+        const tags = (bundData.data.categories || []).map((c: any) => c.description || c.name) as string[]
         return {
           source: 'bundle',
           appId,
           bundleId,
           title: bundData.data.name,
-          priceBaseCents: baseCents,
-          priceFinalCents: finalCents,
+          priceBaseCents: baseValue * 100,  // Convert to cents properly
+          priceFinalCents: finalValue * 100,  // Convert to cents properly
           discountPct: price.discount_percent || 0,
           currency: price.currency || 'BRL',
-          priceFinalBRL: centsToBRLString(finalCents),
-          url: `https://store.steampowered.com/bundle/${bundleId}/`
+          priceFinalBRL: centsToBRLString(finalValue),
+          url: `https://store.steampowered.com/bundle/${bundleId}/`,
+          coverUrl,
+          tags
         }
       }
     }
@@ -138,8 +152,8 @@ export async function fetchSteamAppPrice(appId: number): Promise<SteamPriceRespo
 
 export async function fetchSteamFeatured(): Promise<SteamFeaturedItem[]> {
   try {
-    const url = 'https://store.steampowered.com/api/featuredcategories?cc=br&l=portuguese'
-    const response = await fetchWithHeaders(url)
+    const url = 'https://store.steampowered.com/api/featuredcategories?cc=BR&l=pt-BR'
+    const response = await fetch(url, { headers: { 'User-Agent': 'Looton/1.0' } })
     const data = await response.json()
     
     const items: SteamFeaturedItem[] = []
@@ -192,12 +206,11 @@ export async function fetchSteamFeatured(): Promise<SteamFeaturedItem[]> {
           const steamItem: SteamFeaturedItem = {
             source,
             title: item.name,
-            priceBaseCents: priceData.initial || priceData.final,
-            priceFinalCents: priceData.final,
+            priceBaseCents: (priceData.initial || priceData.final) * 100, // Convert to cents
+            priceFinalCents: priceData.final * 100, // Convert to cents
             discountPct: priceData.discount_percent || 0,
             currency: priceData.currency || 'BRL',
-            url
-            ,
+            url,
             genres: (item.genres || []).map((g: any) => g.description || g) as string[]
           }
           

@@ -28,6 +28,9 @@ export default async function debugRoutes(app: FastifyInstance) {
       url: body.url || '',
       priceBase: body.priceBase ?? body.priceFinal,
       priceFinal: body.priceFinal,
+      priceBaseCents: Math.round((body.priceBase ?? body.priceFinal) * 100),
+      priceFinalCents: Math.round(body.priceFinal * 100),
+      currency: 'BRL',
       discountPct: body.discountPct ?? Math.round(((body.priceBase ?? body.priceFinal) - body.priceFinal) / (body.priceBase ?? body.priceFinal) * 100),
       isActive: true,
       coverUrl: body.coverUrl || ''

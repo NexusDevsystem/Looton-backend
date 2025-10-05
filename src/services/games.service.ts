@@ -1,7 +1,7 @@
 import { OfferDTO, StoreAdapter } from '../adapters/types.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { epicAdapter } from '../adapters/epic.adapter.js'
-import { gogAdapter } from '../adapters/gog.adapter.js'
+
 import { upsertOffersAndNotify } from './offers.service.js'
 import { redis } from '../lib/redis.js'
 import { Game } from '../db/models/Game.js'
@@ -10,8 +10,7 @@ import { Offer } from '../db/models/Offer.js'
 
 const adapters: Record<string, StoreAdapter> = {
   steam: steamAdapter,
-  epic: epicAdapter,
-  gog: gogAdapter
+  epic: epicAdapter
 }
 
 export async function searchGamesInStores(query: string, stores?: string[]) {
