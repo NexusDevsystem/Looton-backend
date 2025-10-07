@@ -1,4 +1,5 @@
 ﻿import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
+import { shuffleWithSeed, stringToSeed } from '../utils/seedable-prng.js'
 export interface ConsolidatedDeal {
   id: string // app:123 | package:456 | bundle:789
   title: string
@@ -185,11 +186,42 @@ async function resolveBundle(bundleid: number, cc: string, l: string): Promise<N
   }
 }
 
-export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: string; l?: string }): Promise<ConsolidatedDeal[]> {
+// Cache para pools diários por região
+const dailyPoolsCache = new MemoryCache<string, ConsolidatedDeal[]>(ttlSecondsToMs(7200)) // 2h TTL
+
+// Cache para listas de ofertas diárias
+const dailyFeaturedCache = new MemoryCache<string, ConsolidatedDeal[]>(ttlSecondsToMs(108000)) // 30h TTL
+
+// Cache para IDs recentes (antirrepetição de 7 dias)
+const recentIdsCache = new MemoryCache<string, Set<string>>(ttlSecondsToMs(604800)) // 7 dias TTL
+
+export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: string; l?: string; useDailyRotation?: boolean }): Promise<ConsolidatedDeal[]> {
   const cc = (opts?.cc || 'BR').toUpperCase()
   const l = opts?.l || 'pt-BR'
+  const useDailyRotation = opts?.useDailyRotation ?? true
   const ckey = cacheKey(cc, l)
 
+  // Se for para rotação diária, usar o sistema de rotação
+  if (useDailyRotation) {
+    const dayKey = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) // YYYY-MM-DD no fuso local
+    const cacheKeyFeatured = `featured:${cc}:${l}:${dayKey}`
+    
+    // Tentar obter do cache
+    const cachedFeatured = dailyFeaturedCache.get(cacheKeyFeatured)
+    if (cachedFeatured) {
+      console.log(`✅ Ofertas diárias recuperadas do cache para ${cc}:${l}:${dayKey} (${cachedFeatured.length} itens)`)
+      return cachedFeatured.slice(0, limit)
+    }
+
+    // Gerar novas ofertas para o dia
+    const dailyDeals = await generateDailyFeatured(cc, l, dayKey, limit)
+    dailyFeaturedCache.set(cacheKeyFeatured, dailyDeals)
+    
+    console.log(`✅ Novas ofertas diárias geradas para ${cc}:${l}:${dayKey} (${dailyDeals.length} itens)`)
+    return dailyDeals.slice(0, limit)
+  }
+
+  // Caso contrário, usar o comportamento antigo
   const cached = normalizedCache.get(ckey)
   if (cached) return cached.slice(0, limit)
 
@@ -281,4 +313,135 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
     console.error('Erro ao buscar deals consolidadas:', error)
     return []
   }
+}
+
+// Função para gerar as ofertas diárias com rotação
+async function generateDailyFeatured(cc: string, l: string, dayKey: string, limit: number = 50): Promise<ConsolidatedDeal[]> {
+  // Gerar seed baseada em cc + l + dayKey
+  const seedInput = `${cc}|${l}|${dayKey}`;
+  const seed = stringToSeed(seedInput);
+  
+  // Obter ou criar pool diário
+  const poolKey = `pool:${cc}:${l}`;
+  let pool = dailyPoolsCache.get(poolKey);
+  
+  if (!pool) {
+    // Atualizar pool com ofertas elegíveis
+    pool = await generateEligiblePool(cc, l);
+    dailyPoolsCache.set(poolKey, pool);
+  }
+  
+  // Obter IDs recentes para antirrepetição
+  const recentKey = `recent:${cc}:${l}`;
+  let recentIds = recentIdsCache.get(recentKey);
+  if (!recentIds) {
+    recentIds = new Set<string>();
+    recentIdsCache.set(recentKey, recentIds);
+  }
+  
+  // Filtrar pool para excluir IDs recentes
+  const poolWithoutRecent = pool.filter(deal => !recentIds!.has(deal.id));
+  
+  // Embaralhar pool com PRNG seedable
+  const shuffledPool = shuffleWithSeed(poolWithoutRecent, seed);
+  
+  // Selecionar os primeiros N itens
+  const selected = shuffledPool.slice(0, limit);
+  
+  // Adicionar os selecionados aos IDs recentes
+  for (const deal of selected) {
+    recentIds.add(deal.id);
+  }
+  
+  return selected;
+}
+
+// Função para gerar o pool elegível de ofertas
+async function generateEligiblePool(cc: string, l: string): Promise<ConsolidatedDeal[]> {
+  const specials = await fetchSpecials(cc, l)
+  // Ordena por desconto desc para priorizar os melhores
+  specials.sort((a: any, b: any) => (b?.discount_percent || 0) - (a?.discount_percent || 0))
+
+  // Resolve detalhes com limite para manter leve
+  const pool = specials.slice(0, Math.min(120, specials.length))
+  const resolved: Normalized[] = []
+  for (const s of pool) {
+    // resolve como app/package/bundle
+    const id = Number(s?.id)
+    if (!Number.isFinite(id)) continue
+
+    const tryApp = await resolveApp(id, cc, l)
+    if (tryApp) { resolved.push(tryApp); continue }
+    const tryPkg = await resolvePackage(id, cc, l)
+    if (tryPkg) { resolved.push(tryPkg); continue }
+    const tryBun = await resolveBundle(id, cc, l)
+    if (tryBun) { resolved.push(tryBun); continue }
+  }
+
+  // Aplicar filtros de elegibilidade
+  const MIN_DISCOUNT = 30; // Pelo prompt
+  const filtered = resolved.filter(r => {
+    // Apenas jogos (não F2P, tem price_overview, discount >= MIN_DISCOUNT)
+    if (r.kind !== 'game' || r.isFree) return false; // Não F2P
+    if (typeof r.priceOriginalCents !== 'number' || typeof r.priceFinalCents !== 'number') return false; // Tem preço
+    if ((r.discountPct || 0) < MIN_DISCOUNT) return false; // Desconto mínimo
+    return true;
+  })
+
+  // Deduplicar por id
+  const uniq = new Map<string, Normalized>()
+  for (const r of filtered) {
+    if (!uniq.has(r.id)) uniq.set(r.id, r)
+  }
+
+  // Ordenar por desconto desc e preço final asc
+  const ordered = Array.from(uniq.values()).sort((a, b) => {
+    const da = a.discountPct || 0
+    const db = b.discountPct || 0
+    if (db !== da) return db - da
+    const fa = typeof a.priceFinalCents === 'number' ? a.priceFinalCents : Number.MAX_SAFE_INTEGER
+    const fb = typeof b.priceFinalCents === 'number' ? b.priceFinalCents : Number.MAX_SAFE_INTEGER
+    return fa - fb
+  })
+
+  // Mapear para ConsolidatedDeal
+  const consolidated: ConsolidatedDeal[] = ordered.map(n => {
+    const slug = n.title.toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, '')
+    const priceBase = centsToUnit(n.priceOriginalCents)
+    const priceFinal = centsToUnit(n.priceFinalCents)
+    const discount = clampPct(n.discountPct)
+    const numericId = n.id.split(':')[1] || n.id
+    const isFree = n.kind === 'game' && !!n.isFree
+    return {
+      id: n.id,
+      title: n.title,
+      slug,
+      coverUrl: n.coverUrl,
+      genres: n.tags || [],
+      tags: n.tags || [],
+      kind: n.kind,
+      isFree,
+      baseGameTitle: n.baseGameTitle,
+      currency: n.currency,
+      stores: [{
+        store: 'steam',
+        storeAppId: numericId,
+        url: n.url,
+        priceBase: isFree ? 0 : priceBase,
+        priceFinal: isFree ? 0 : priceFinal,
+        discountPct: isFree ? 0 : discount,
+        isActive: true
+      }],
+      bestPrice: {
+        store: 'steam',
+        price: isFree ? 0 : priceFinal,
+        discountPct: isFree ? 0 : discount
+      },
+      totalStores: 1
+    }
+  })
+
+  console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${consolidated.length} itens)`)
+
+  return consolidated;
 }

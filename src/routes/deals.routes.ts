@@ -19,7 +19,7 @@ export default async function dealsRoutes(app: FastifyInstance) {
       console.log('🎮 Buscando deals com preços ao vivo da Steam...')
       
       // Usar serviço consolidado que já busca preços atuais
-      let deals = await fetchConsolidatedDeals(limit || 20, { cc, l })
+      let deals = await fetchConsolidatedDeals(limit || 30, { cc, l })
       
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       
