@@ -29,8 +29,9 @@ const envSchema = z.object({
   CURATION_FEED_SIZE: z.coerce.number().default(30),
   CURATION_CRON: z.string().default('*/30 * * * *'),
   CACHE_TTL_SECONDS: z.coerce.number().default(900),
-  ROTATION_FILE: z.string().default('.rotation_memory.json')
-  ,
+  ROTATION_FILE: z.string().default('.rotation_memory.json'),
+  OFFERS_EXPIRATION_DAYS: z.coerce.number().default(7),
+  OFFERS_CLEANUP_CRON: z.string().default('0 */6 * * *'),
   // PC Hardware deals (no DB)
   PC_CUR_MIN_DISCOUNT: z.coerce.number().default(5),
   PC_CUR_ROTATION_COOLDOWN_HOURS: z.coerce.number().default(72),

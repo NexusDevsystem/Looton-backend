@@ -2,6 +2,7 @@ import { createQueue, createWorker } from '../lib/queue.js'
 import { env } from '../env.js'
 import { runUpdateAllStores } from './updateAllStores.job.js'
 import { runRefreshCurrency } from './refreshCurrency.job.js'
+import { startCleanupJob } from './cleanupOffers.job.js'
 
 export async function startJobs() {
   const { queue: q1 } = createQueue<'updateAllStores'>('updateAllStores')
@@ -11,6 +12,9 @@ export async function startJobs() {
   const { queue: q2 } = createQueue<'refreshCurrency'>('refreshCurrency')
   await q2.add('refreshCurrency', {}, { repeat: { pattern: env.CURRENCY_REFRESH_CRON } })
   createWorker<'refreshCurrency'>('refreshCurrency', async () => runRefreshCurrency())
+
+  // start cleanup job
+  startCleanupJob()
 
   // kick once on startup (non-blocking)
   q1.add('updateAllStores', {})

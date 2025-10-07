@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getOffersByGame, getHistory } from '../services/offers.service.js'
 import { matchesGenres, toCanonicalGenre } from '../utils/genres.js'
 import { pickImageUrls } from '../utils/imageUtils.js'
+import { env } from '../env.js'
 
 type GameItem = {
   id: string;
@@ -52,8 +53,12 @@ export default async function gamesRoutes(app: FastifyInstance) {
       const Offer = (await import('../db/models/Offer.js')).Offer
       const Store = (await import('../db/models/Store.js')).Store
 
-      // 1) Buscar todos os jogos com ofertas ativas
-      const gamesWithOffers = await Game.aggregate([
+      // 1) Buscar todos os jogos com ofertas (ativas e recentemente expiradas)
+      const daysThreshold = env.OFFERS_EXPIRATION_DAYS || 7;
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysThreshold);
+
+      let gamesWithOffers = await Game.aggregate([
         { $match: { deletedAt: { $exists: false } } },
         {
           $lookup: {
@@ -65,7 +70,15 @@ export default async function gamesRoutes(app: FastifyInstance) {
         },
         {
           $match: {
-            'offers': { $elemMatch: { isActive: true } }
+            'offers': { $elemMatch: { 
+              $or: [
+                { isActive: true },
+                { 
+                  isActive: false, 
+                  lastSeenAt: { $gte: cutoffDate } // Incluir ofertas desativadas recentemente
+                }
+              ]
+            }}
           }
         },
         {
@@ -74,7 +87,22 @@ export default async function gamesRoutes(app: FastifyInstance) {
               $arrayElemAt: [
                 {
                   $sortArray: {
-                    input: { $filter: { input: '$offers', cond: { $eq: ['$$this.isActive', true] } } },
+                    input: { 
+                      $filter: { 
+                        input: '$offers', 
+                        cond: { 
+                          $or: [
+                            { $eq: ['$this.isActive', true] },
+                            { 
+                              $and: [
+                                { $eq: ['$this.isActive', false] },
+                                { $gte: ['$this.lastSeenAt', cutoffDate] }
+                              ]
+                            }
+                          ]
+                        } 
+                      }
+                    },
                     sortBy: { priceFinal: 1 }
                   }
                 },
@@ -107,6 +135,75 @@ export default async function gamesRoutes(app: FastifyInstance) {
           }
         }
       ])
+
+      // 1.5) Se o número de ofertas ativas e recentemente expiradas for muito baixo,
+      // buscar ofertas mais antigas para manter o feed cheio
+      if (gamesWithOffers.length < 10) {
+        const extendedGames = await Game.aggregate([
+          { $match: { deletedAt: { $exists: false } } },
+          {
+            $lookup: {
+              from: 'offers',
+              localField: '_id',
+              foreignField: 'gameId',
+              as: 'offers'
+            }
+          },
+          {
+            $match: {
+              'offers': { $elemMatch: { 
+                isActive: false // Incluir ofertas expiradas mais antigas
+              }}
+            }
+          },
+          {
+            $addFields: {
+              bestOffer: {
+                $arrayElemAt: [
+                  {
+                    $sortArray: {
+                      input: { $filter: { input: '$offers', cond: { $eq: ['$this.isActive', false] } } },
+                      sortBy: { priceFinal: 1 }
+                    }
+                  },
+                  0
+                ]
+              }
+            }
+          },
+          {
+            $lookup: {
+              from: 'stores',
+              localField: 'bestOffer.storeId',
+              foreignField: '_id',
+              as: 'storeInfo'
+            }
+          },
+          {
+            $project: {
+              _id: 1,
+              title: 1,
+              coverUrl: 1,
+              genres: 1,
+              tags: 1,
+              bestOffer: {
+                priceFinal: '$bestOffer.priceFinal',
+                discountPct: '$bestOffer.discountPct',
+                url: '$bestOffer.url',
+                store: { $arrayElemAt: ['$storeInfo.name', 0] }
+              }
+            }
+          }
+        ]);
+
+        // Adicionar ofertas expiradas mais antigas para completar o feed
+        const existingIds = new Set(gamesWithOffers.map(g => g._id.toString()));
+        const additionalOffers = extendedGames
+          .filter(g => !existingIds.has(g._id.toString()))
+          .slice(0, 30 - gamesWithOffers.length); // Garantir até 30 total
+
+        gamesWithOffers = [...gamesWithOffers, ...additionalOffers];
+      }
 
       // 2) Converter para formato GameItem
       let items: GameItem[] = gamesWithOffers.map((g: any) => {
