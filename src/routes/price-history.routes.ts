@@ -1,9 +1,10 @@
-// Fastify types removed during Express migration
+import { FastifyPluginAsync } from 'fastify'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js';
 
 // Função para buscar dados atuais da Steam API
 async function fetchSteamAppDetails(appId: string) {
   try {
-    const response = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appId}&cc=br&l=portuguese&filters=price_overview`)
+    const response = await fetchWithTimeout(`https://store.steampowered.com/api/appdetails?appids=${appId}&cc=br&l=portuguese&filters=price_overview`, {}, 10000) // 10 segundos
     const data = await response.json()
     
     if (data[appId] && data[appId].success && data[appId].data?.price_overview) {
@@ -26,8 +27,8 @@ async function fetchSteamAppDetails(appId: string) {
 
 // Dados reais da Steam API - sem simulação
 
-export default async function priceHistoryRoutes(app: any) {
-  app.get('/price-history/:gameId', async (req: any, res: any) => {
+const priceHistoryRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get('/price-history/:gameId', async (req, reply) => {
     try {
       const { gameId } = req.params as { gameId: string }
       
@@ -37,7 +38,7 @@ export default async function priceHistoryRoutes(app: any) {
       const steamData = await fetchSteamAppDetails(gameId)
       
       if (!steamData.success || !steamData.price) {
-        return res.status(404).send({
+        return reply.status(404).send({
           error: 'Dados não encontrados',
           message: 'Não foi possível obter dados atuais da Steam para este jogo'
         })
@@ -52,7 +53,7 @@ export default async function priceHistoryRoutes(app: any) {
         }
       }]
       
-      return res.send({
+      return reply.send({
         gameId,
         gameTitle: `Jogo ${gameId}`,
         period: 'Dados atuais da Steam',
@@ -83,10 +84,12 @@ export default async function priceHistoryRoutes(app: any) {
       
     } catch (error) {
       console.error('Erro ao buscar dados da Steam:', error)
-      return res.status(500).send({ 
+      return reply.status(500).send({ 
         error: 'Erro interno do servidor',
         message: error instanceof Error ? error.message : 'Erro desconhecido'
       })
     }
   })
 }
+
+export default priceHistoryRoutes

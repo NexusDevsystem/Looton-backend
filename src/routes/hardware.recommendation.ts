@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { TB_HARDWARE_COMPONENTS, getHardwareRecommendationsForGame } from '../services/terabyte.hardware';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js';
 
 // Helper: try to fetch Steam app details and extract pc_requirements.minimum/recommended
 async function fetchSteamRequirements(appId: string): Promise<string | null> {
   try {
-    const resp = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appId}&cc=br&l=portuguese`);
+    const resp = await fetchWithTimeout(`https://store.steampowered.com/api/appdetails?appids=${appId}&cc=br&l=portuguese`, {}, 10000); // 10 segundos
     const data = await resp.json();
     if (data && data[appId] && data[appId].success && data[appId].data) {
       const steamData = data[appId].data;

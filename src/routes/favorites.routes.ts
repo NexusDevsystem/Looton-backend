@@ -1,11 +1,12 @@
+import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 
 // Cache em memória para favoritos (sem MongoDB)
 const favoritesCache = new Map<string, any[]>()
 
-export default async function favoritesRoutes(app: any) {
+const favoritesRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /favorites - Criar favorito (sem MongoDB)
-  app.post('/favorites', async (req: any, res: any) => {
+  fastify.post('/favorites', async (req, reply) => {
     console.log('📝 POST favorites - cache em memória')
     
     const schema = z.object({
@@ -28,7 +29,8 @@ export default async function favoritesRoutes(app: any) {
       // Verificar se já existe
       const existingIndex = userFavorites.findIndex(f => f.gameId === data.gameId)
       if (existingIndex !== -1) {
-        return res.status(409).send({ error: 'Jogo já está nos favoritos' })
+        reply.status(409).send({ error: 'Jogo já está nos favoritos' })
+        return
       }
       
       // Criar novo favorito
@@ -49,14 +51,14 @@ export default async function favoritesRoutes(app: any) {
       userFavorites.push(newFavorite)
       favoritesCache.set(data.userId, userFavorites)
 
-      return res.status(201).send(newFavorite)
+      reply.status(201).send(newFavorite)
     } catch (error: any) {
-      return res.status(400).send({ error: error.message })
+      reply.status(400).send({ error: error.message })
     }
   })
 
   // GET /favorites - Buscar favoritos do usuário (sem MongoDB)
-  app.get('/favorites', async (req: any, res: any) => {
+  fastify.get('/favorites', async (req, reply) => {
     console.log('📋 GET favorites - cache em memória')
     
     const schema = z.object({
@@ -79,14 +81,14 @@ export default async function favoritesRoutes(app: any) {
       // Ordenar por data de criação (mais recente primeiro)
       favorites.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
-      return res.send(favorites)
+      reply.send(favorites)
     } catch (error: any) {
-      return res.status(400).send({ error: error.message })
+      reply.status(400).send({ error: error.message })
     }
   })
 
   // DELETE /favorites/:id - Remover favorito (sem MongoDB)
-  app.delete('/favorites/:id', async (req: any, res: any) => {
+  fastify.delete('/favorites/:id', async (req, reply) => {
     console.log('🗑️ DELETE favorites - cache em memória')
     
     const schema = z.object({
@@ -109,18 +111,19 @@ export default async function favoritesRoutes(app: any) {
       }
       
       if (!found) {
-        return res.status(404).send({ error: 'Favorito não encontrado' })
+        reply.status(404).send({ error: 'Favorito não encontrado' })
+        return
       }
 
-      return res.status(204).send()
+      reply.status(204).send()
     } catch (error: any) {
-      return res.status(400).send({ error: error.message })
+      reply.status(400).send({ error: error.message })
     }
   })
 
-  // PATCH /favorites/:id - Atualizar favorito (sem MongoDB)
-  app.patch('/favorites/:id', async (req: any, res: any) => {
-    console.log('✏️ PATCH favorites - cache em memória')
+  // PUT /favorites/:id - Atualizar favorito (sem MongoDB)
+  fastify.put('/favorites/:id', async (req, reply) => {
+    console.log('✏️ PUT favorites - cache em memória')
     
     const schema = z.object({
       id: z.string()
@@ -159,17 +162,18 @@ export default async function favoritesRoutes(app: any) {
       }
 
       if (!updatedFavorite) {
-        return res.status(404).send({ error: 'Favorito não encontrado' })
+        reply.status(404).send({ error: 'Favorito não encontrado' })
+        return
       }
 
-      return res.send(updatedFavorite)
+      reply.send(updatedFavorite)
     } catch (error: any) {
-      return res.status(400).send({ error: error.message })
+      reply.status(400).send({ error: error.message })
     }
   })
 
   // POST /favorites/sync - Sincronizar favoritos em lote (sem MongoDB)
-  app.post('/favorites/sync', async (req: any, res: any) => {
+  fastify.post('/favorites/sync', async (req, reply) => {
     console.log('🔄 POST favorites/sync - cache em memória')
     
     const schema = z.object({
@@ -230,9 +234,11 @@ export default async function favoritesRoutes(app: any) {
       // Salvar no cache
       favoritesCache.set(data.userId, userFavorites)
 
-      return res.send({ synced: results.length, favorites: results })
+      reply.send({ synced: results.length, favorites: results })
     } catch (error: any) {
-      return res.status(400).send({ error: error.message })
+      reply.status(400).send({ error: error.message })
     }
   })
 }
+
+export default favoritesRoutes

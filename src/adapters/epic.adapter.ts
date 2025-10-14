@@ -1,4 +1,5 @@
 ﻿import { OfferDTO, StoreAdapter } from './types.js'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js'
 
 // Cache curto para ofertas da Epic para evitar excesso de requisições
 let cachedEpicOffers: OfferDTO[] = [];
@@ -20,7 +21,14 @@ export const epicAdapter: StoreAdapter = {
       
       // Fazendo requisição à API da Epic Games
       const url = 'https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=pt-BR&country=BR';
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+          'Referer': 'https://store.epicgames.com/'
+        }
+      }, 15000); // 15 segundos de timeout
       
       if (!response.ok) {
         console.error(`Epic API error: ${response.status} ${response.statusText}`);

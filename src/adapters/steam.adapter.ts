@@ -1,5 +1,6 @@
 ﻿import { OfferDTO, StoreAdapter } from './types.js'
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js'
 
 // Cache curto por região/idioma (5 minutos)
 const specialsCache = new MemoryCache<string, OfferDTO[]>(ttlSecondsToMs(300))
@@ -21,8 +22,18 @@ export const steamAdapter: StoreAdapter = {
 
       console.log('🎮 Buscando ofertas (specials) da Steam...')
       const url = `https://store.steampowered.com/api/featuredcategories?cc=${cc}&l=${l}`
-      const res = await fetch(url)
-      if (!res.ok) return []
+      const res = await fetchWithTimeout(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+          'Referer': 'https://store.steampowered.com/'
+        }
+      }, 15000) // 15 segundos de timeout
+      if (!res.ok) {
+        console.error(`Erro na requisição Steam: ${res.status} ${res.statusText}`)
+        return []
+      }
       const json = await res.json()
 
       const items: any[] = json?.specials?.items ?? []
@@ -89,7 +100,14 @@ export const steamAdapter: StoreAdapter = {
         
         try {
           // Buscar preço atual da Steam API
-          const priceResponse = await fetch(`https://store.steampowered.com/api/appdetails/?appids=${item.id}&cc=BR&l=portuguese`)
+          const priceResponse = await fetchWithTimeout(`https://store.steampowered.com/api/appdetails/?appids=${item.id}&cc=BR&l=portuguese`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              'Accept': 'application/json',
+              'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+              'Referer': 'https://store.steampowered.com/'
+            }
+          }, 15000) // 15 segundos de timeout
           if (!priceResponse.ok) continue
           
           const priceData = await priceResponse.json()

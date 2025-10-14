@@ -1,5 +1,6 @@
 // Fastify types removed during Express migration
 import { z } from 'zod'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js'
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 
 
@@ -29,9 +30,14 @@ function isTextMatchScore(q: string, title: string) {
 }
 
 async function fetchJson(url: string) {
-  const res = await fetch(url)
-  if (!res.ok) return undefined
-  return res.json()
+  try {
+    const res = await fetchWithTimeout(url, {}, 10000) // 10 segundos
+    if (!res.ok) return undefined
+    return res.json()
+  } catch (error) {
+    console.error('Erro ao buscar JSON:', error)
+    return undefined
+  }
 }
 
 async function enrichApp(appid: number, cc: string, l: string) {
