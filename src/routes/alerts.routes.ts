@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { createAlert, deleteAlert, getAlertsByUser, registerUser, testNotify } from '../services/alerts.service.js'
+import { createAlert, deleteAlert, getAlertsByUser, registerUser, testNotify, checkAndNotify } from '../services/alerts.service.js'
 
 export default async function alertsRoutes(app: FastifyInstance) {
   app.post('/users', async (req: any, reply: any) => {
@@ -45,5 +45,32 @@ export default async function alertsRoutes(app: FastifyInstance) {
     const body = schema.parse(req.body)
     const ok = await testNotify(body)
     return reply.send({ ok })
+  })
+  
+  // Nova rota para testar notificação baseada em oferta
+  app.post('/notify/deal-test', async (req: any, reply: any) => {
+    const schema = z.object({ 
+      userId: z.string().length(24),
+      title: z.string().default('Jogo Teste'),
+      price: z.number(),
+      store: z.string().default('Steam'),
+      discount: z.number().default(50)
+    })
+    const body = schema.parse(req.body)
+    
+    // Simular uma oferta para testar o sistema de notificação
+    const mockOffer = {
+      priceFinal: body.price,
+      discountPct: body.discount,
+      storeId: new (await import('mongoose')).Types.ObjectId() // Mock ID
+    }
+    
+    try {
+      await checkAndNotify(body.userId, mockOffer as any)
+      return reply.send({ ok: true, message: 'Notificação de teste enviada' })
+    } catch (error) {
+      console.error('Erro no teste de notificação:', error)
+      return reply.status(500).send({ ok: false, error: 'Erro ao enviar notificação de teste' })
+    }
   })
 }

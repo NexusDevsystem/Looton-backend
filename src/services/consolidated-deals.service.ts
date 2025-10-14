@@ -195,15 +195,17 @@ const dailyFeaturedCache = new MemoryCache<string, ConsolidatedDeal[]>(ttlSecond
 // Cache para IDs recentes (antirrepetição de 7 dias)
 const recentIdsCache = new MemoryCache<string, Set<string>>(ttlSecondsToMs(604800)) // 7 dias TTL
 
-export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: string; l?: string; useDailyRotation?: boolean }): Promise<ConsolidatedDeal[]> {
+export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: string; l?: string; useDailyRotation?: boolean; dayKey?: string }): Promise<ConsolidatedDeal[]> {
   const cc = (opts?.cc || 'BR').toUpperCase()
   const l = opts?.l || 'pt-BR'
   const useDailyRotation = opts?.useDailyRotation ?? true
+  const providedDayKey = opts?.dayKey
   const ckey = cacheKey(cc, l)
 
   // Se for para rotação diária, usar o sistema de rotação
   if (useDailyRotation) {
-    const dayKey = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) // YYYY-MM-DD no fuso local
+    // Allow overriding the dayKey for simulation/testing via opts.dayKey (format: YYYY-MM-DD or any string)
+    const dayKey = providedDayKey || new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) // YYYY-MM-DD no fuso local
     const cacheKeyFeatured = `featured:${cc}:${l}:${dayKey}`
     
     // Tentar obter do cache
@@ -227,8 +229,8 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
 
   try {
     const specials = await fetchSpecials(cc, l)
-    // Ordena por desconto desc para priorizar os melhores
-    specials.sort((a: any, b: any) => (b?.discount_percent || 0) - (a?.discount_percent || 0))
+    // NOTA: Removendo ordenação fixa aqui para permitir ordenação por qualidade mais tarde
+    // A ordenação por qualidade será feita nos serviços superiores
 
     // Resolve detalhes com limite para manter leve
     const pool = specials.slice(0, Math.min(120, specials.length))
@@ -340,27 +342,69 @@ async function generateDailyFeatured(cc: string, l: string, dayKey: string, limi
   }
   
   // Filtrar pool para excluir IDs recentes
-  const poolWithoutRecent = pool.filter(deal => !recentIds!.has(deal.id));
-  
-  // Embaralhar pool com PRNG seedable
-  const shuffledPool = shuffleWithSeed(poolWithoutRecent, seed);
-  
-  // Selecionar os primeiros N itens
-  const selected = shuffledPool.slice(0, limit);
-  
-  // Adicionar os selecionados aos IDs recentes
-  for (const deal of selected) {
-    recentIds.add(deal.id);
+  let poolWithoutRecent = pool.filter(deal => !recentIds!.has(deal.id));
+
+  // If pool becomes too small due to recentIds, allow some recycling by trimming recentIds
+  const MIN_POOL_SIZE = Math.max(20, limit * 2);
+  if (poolWithoutRecent.length < MIN_POOL_SIZE) {
+    // Remove older entries from recentIds to replenish pool (FIFO-like behavior not tracked precisely here)
+    const trimmed = new Set<string>();
+    let count = 0;
+    for (const id of recentIds!) {
+      if (count >= Math.floor(recentIds!.size / 2)) break; // keep half, free the rest
+      trimmed.add(id);
+      count++;
+    }
+    recentIds = trimmed;
+    recentIdsCache.set(recentKey, recentIds);
+    poolWithoutRecent = pool.filter(deal => !recentIds!.has(deal.id));
   }
-  
+
+  // Ordenar o pool por qualidade (desconto desc, preco final asc) para extrair os top deals
+  const poolOrdered = [...poolWithoutRecent].sort((a, b) => {
+    const da = a.bestPrice?.discountPct ?? 0;
+    const db = b.bestPrice?.discountPct ?? 0;
+    if (db !== da) return db - da;
+    const fa = typeof a.bestPrice?.price === 'number' ? a.bestPrice!.price! : Number.MAX_SAFE_INTEGER;
+    const fb = typeof b.bestPrice?.price === 'number' ? b.bestPrice!.price! : Number.MAX_SAFE_INTEGER;
+    return fa - fb;
+  });
+
+  // Take top K to ensure best deals appear at the top of the day's list
+  const TOP_K = Math.max(5, Math.floor(limit * 0.2)); // top 20% or at least 5
+  const topDeals = poolOrdered.slice(0, TOP_K);
+
+  // Remaining pool (without the top ones)
+  const remainingPool = poolWithoutRecent.filter(d => !topDeals.find(t => t.id === d.id));
+
+  // Embaralhar o restante com PRNG seedable para rotacionar diariamente
+  const shuffledRemaining = shuffleWithSeed(remainingPool, seed);
+
+  // Combinar topDeals com shuffledRemaining para compor o resultado final
+  const selected: ConsolidatedDeal[] = [...topDeals, ...shuffledRemaining].slice(0, limit);
+
+  // Adicionar os selecionados aos IDs recentes (e capear o tamanho do set)
+  for (const deal of selected) {
+    recentIds!.add(deal.id);
+  }
+  // Cap the recentIds size to 7 days equivalent (approx)
+  const MAX_RECENT = 10000; // safety cap
+  if (recentIds!.size > MAX_RECENT) {
+    // Trim some entries (not strictly FIFO, but keeps size reasonable)
+    const newSet = new Set(Array.from(recentIds!).slice(-MAX_RECENT));
+    recentIdsCache.set(recentKey, newSet);
+  } else {
+    recentIdsCache.set(recentKey, recentIds!);
+  }
+
   return selected;
 }
 
 // Função para gerar o pool elegível de ofertas
 async function generateEligiblePool(cc: string, l: string): Promise<ConsolidatedDeal[]> {
   const specials = await fetchSpecials(cc, l)
-  // Ordena por desconto desc para priorizar os melhores
-  specials.sort((a: any, b: any) => (b?.discount_percent || 0) - (a?.discount_percent || 0))
+  // NOTA: Removendo ordenação fixa aqui para permitir ordenação por qualidade mais tarde
+  // A ordenação por qualidade será feita nos serviços superiores
 
   // Resolve detalhes com limite para manter leve
   const pool = specials.slice(0, Math.min(120, specials.length))
@@ -380,10 +424,22 @@ async function generateEligiblePool(cc: string, l: string): Promise<Consolidated
 
   // Aplicar filtros de elegibilidade
   const MIN_DISCOUNT = 30; // Pelo prompt
+
+  // Blacklist terms para excluir conteúdo indesejado (hentai / anime etc.)
+  const blacklist = ["hentai", "anime", "ecchi", "adult", "nsfw", "porn"]
+
   const filtered = resolved.filter(r => {
-    // Apenas jogos (não F2P, tem price_overview, discount >= MIN_DISCOUNT)
+    // Excluir por tipo / gratuito
     if (r.kind !== 'game' || r.isFree) return false; // Não F2P
-    if (typeof r.priceOriginalCents !== 'number' || typeof r.priceFinalCents !== 'number') return false; // Tem preço
+    // Exigir preços válidos
+    if (typeof r.priceOriginalCents !== 'number' || typeof r.priceFinalCents !== 'number') return false;
+    // Excluir por blacklist de título/tags
+    const titleLower = (r.title || '').toLowerCase();
+    const tagsLower = (r.tags || []).map(t => String(t).toLowerCase()).join(' ');
+    for (const term of blacklist) {
+      if (titleLower.includes(term) || tagsLower.includes(term)) return false;
+    }
+    // Exigir desconto mínimo
     if ((r.discountPct || 0) < MIN_DISCOUNT) return false; // Desconto mínimo
     return true;
   })

@@ -13,13 +13,15 @@ export default async function dealsRoutes(app: FastifyInstance) {
       cc: z.string().length(2).optional(),
       l: z.string().optional(),
     })
-    const { limit, boost, cc, l } = schema.parse(req.query)
+  const { limit, boost, cc, l } = schema.parse(req.query)
+  // Optional day parameter for simulation (format YYYY-MM-DD recommended)
+  const day = req.query?.day || undefined
     
     try {
       console.log('🎮 Buscando deals com preços ao vivo da Steam...')
       
       // Usar serviço consolidado que já busca preços atuais
-      let deals = await fetchConsolidatedDeals(limit || 30, { cc, l })
+  let deals = await fetchConsolidatedDeals(limit || 30, { cc, l, dayKey: day })
       
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       

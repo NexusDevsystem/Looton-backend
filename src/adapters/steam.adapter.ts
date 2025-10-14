@@ -57,8 +57,8 @@ export const steamAdapter: StoreAdapter = {
         offers.push(offer)
       }
 
-      // Ordenar: maior desconto primeiro, depois menor preço
-      offers.sort((a, b) => ((b.discountPct ?? 0) - (a.discountPct ?? 0)) || (a.priceFinal - b.priceFinal))
+      // NOTA: Removendo ordenação fixa aqui para permitir ordenação por qualidade mais tarde
+      // A ordenação por qualidade será feita nos serviços superiores
 
       // Cache curto
       specialsCache.set(cacheKey, offers)

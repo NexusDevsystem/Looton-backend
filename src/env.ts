@@ -92,7 +92,9 @@ const envSchema = z.object({
   // Optional cookies to bypass anti-bot (paste full Cookie header value captured from a real browser session)
   PCH_COOKIE: z.string().default(''),
   TBT_COOKIE: z.string().default(''),
-  KABUM_COOKIE: z.string().default('')
+  KABUM_COOKIE: z.string().default(''),
+  // Firebase Admin SDK configuration
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional()
 })
 
 export const env = envSchema.parse(process.env)

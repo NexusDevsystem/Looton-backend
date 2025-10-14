@@ -80,6 +80,20 @@ export async function upsertOffersAndNotify(list: OfferDTO[]) {
         if (isStableChange) {
           await checkFavoritesAndNotify(game._id, created)
         }
+        
+        // Avaliar se é um preço histórico (para notificações proativas)
+        try {
+          const PriceHistory = (await import('../db/models/PriceHistory.js')).PriceHistory
+          const history = await PriceHistory.find({ gameId: game._id, storeId: store._id }).sort({ seenAt: -1 }).limit(30).lean()
+          const { evaluateHistoricalPrices } = await import('./notification.service.js')
+          await evaluateHistoricalPrices({
+            ...created.toObject ? created.toObject() : created,
+            game: { title: game.title, genres: game.genres },
+            store: { name: store.name }
+          }, history)
+        } catch (e) {
+          console.error('Erro ao avaliar preços históricos:', e)
+        }
       } else {
         // Refresh lastSeen
         active.lastSeenAt = new Date()

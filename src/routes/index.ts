@@ -16,6 +16,7 @@ import pcRoutes from './pc.routes.js'
 import priceHistoryRoutes from './price-history.routes.js'
 import epicRoutes from './epic.routes.js'
 import thumbRoutes from './thumb.js'
+import hardwareRecommendationRoutes from './hardware.recommendation.js'
 
 export default async function routes(app: FastifyInstance) {
   await app.register(dealsRoutes)
@@ -35,4 +36,5 @@ export default async function routes(app: FastifyInstance) {
   await app.register(priceHistoryRoutes)
   await app.register(epicRoutes)
   await app.register(thumbRoutes)
+  await app.register(hardwareRecommendationRoutes)
 }

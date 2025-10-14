@@ -237,8 +237,8 @@ export default async function pcRoutes(app: FastifyInstance) {
       if (text) {
         items = items.filter((it) => matchesSmart(it, text))
       }
-      // sort by discount desc if available
-      items.sort((a, b) => (b.discountPct || 0) - (a.discountPct || 0))
+      // NOTA: Removendo ordenação fixa aqui para permitir ordenação por qualidade mais tarde
+      // A ordenação por qualidade será aplicada nos serviços superiores
   if (offset) items = items.slice(offset)
   if (limit) items = items.slice(0, limit)
       const payload = { slotDate: new Date().toISOString(), items }

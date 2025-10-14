@@ -181,6 +181,46 @@ export default async function debugRoutes(app: FastifyInstance) {
       return reply.status(500).send({ message: 'failed to test boost', error: err })
     }
   })
+  
+  // Nova rota para testar notificação com mais detalhes
+  app.post('/debug/test-notification-detailed', async (req: any, reply: any) => {
+    const { token, title, body, userId } = req.body
+    
+    if (!token && !userId) {
+      return reply.status(400).send({ error: 'Token ou userId é necessário' })
+    }
+    
+    try {
+      // Se userId for fornecido, buscar o token do usuário
+      let finalToken = token
+      if (userId) {
+        const User = (await import('../db/models/User.js')).User
+        const user = await User.findById(userId).lean()
+        if (!user?.pushToken) {
+          return reply.status(400).send({ error: 'Usuário não encontrado ou não tem pushToken' })
+        }
+        finalToken = user.pushToken
+      }
+      
+      // Validar token
+      const Expo = (await import('expo-server-sdk')).Expo
+      if (!Expo.isExpoPushToken(finalToken)) {
+        return reply.status(400).send({ error: 'Token inválido' })
+      }
+      
+      // Enviar notificação
+      const { sendPush } = await import('../services/notification.service.js')
+      const success = await sendPush(finalToken, title || 'Teste', body || 'Notificação de teste', { 
+        test: true,
+        timestamp: new Date().toISOString()
+      })
+      
+      return reply.send({ success, tokenPreview: finalToken.substring(0, 20) + '...' })
+    } catch (error) {
+      console.error('Erro no teste detalhado de notificação:', error)
+      return reply.status(500).send({ error: error instanceof Error ? error.message : 'Erro desconhecido' })
+    }
+  })
 }
 
 export { debugPushTokens }
