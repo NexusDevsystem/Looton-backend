@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify'
+// Fastify types removed during Express migration
 import { z } from 'zod'
 import { getOffersByGame, getHistory } from '../services/offers.service.js'
 import { matchesGenres, toCanonicalGenre } from '../utils/genres.js'
@@ -36,9 +36,9 @@ function sortGames(items: GameItem[], sortBy: string) {
   }
 }
 
-export default async function gamesRoutes(app: FastifyInstance) {
+export default async function gamesRoutes(app: any) {
   // GET /games - Feed principal com filtros e ordenação
-  app.get('/games', async (req: any, reply: any) => {
+  app.get('/games', async (req: any, res: any) => {
     const schema = z.object({
       genres: z.string().optional(),
       sortBy: z.enum(['best_price', 'biggest_discount']).default('best_price'),
@@ -247,37 +247,37 @@ export default async function gamesRoutes(app: FastifyInstance) {
       const slice = items.slice(start, end)
       const nextCursor = end < items.length ? end : null
 
-      return reply
+      return res
         .header('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
         .send({ items: slice, nextCursor })
     } catch (err) {
       console.error('Erro na rota /games:', err)
-      return reply.status(500).send({ error: 'Erro interno' })
+      return res.status(500).send({ error: 'Erro interno' })
     }
   })
 
-  app.get('/games/:id/offers', async (req: any, reply: any) => {
+  app.get('/games/:id/offers', async (req: any, res: any) => {
     const schema = z.object({ id: z.string().length(24) })
     const { id } = schema.parse(req.params)
     const offers = await getOffersByGame(id)
-    return reply.send(offers)
+    return res.send(offers)
   })
 
-  app.get('/games/:id/history', async (req: any, reply: any) => {
+  app.get('/games/:id/history', async (req: any, res: any) => {
     const schema = z.object({ id: z.string().length(24) })
     const { id } = schema.parse(req.params)
     const hist = await getHistory(id)
-    return reply.send(hist)
+    return res.send(hist)
   })
 
   // GET /games/search - Pesquisa avançada de jogos
-  app.get('/games/search', async (req: any, reply: any) => {
+  app.get('/games/search', async (req: any, res: any) => {
     const schema = z.object({ q: z.string().optional(), limit: z.coerce.number().min(1).max(100).optional() })
     const { q, limit } = schema.parse(req.query)
 
     const minChars = 2
     if (!q || q.length < minChars) {
-      return reply.send({ items: [] })
+      return res.send({ items: [] })
     }
 
     try {
@@ -309,10 +309,10 @@ export default async function gamesRoutes(app: FastifyInstance) {
       })
 
       console.log(`✅ Retornando ${items.length} resultados da Steam`)
-      return reply.send({ items })
+      return res.send({ items })
     } catch (err) {
       console.error('Erro na rota /games/search:', err)
-      return reply.status(500).send({ error: 'Erro interno' })
+      return res.status(500).send({ error: 'Erro interno' })
     }
   })
 }

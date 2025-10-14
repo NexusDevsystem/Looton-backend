@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify'
+// Fastify types removed during Express migration
 import { z } from 'zod'
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 
@@ -77,9 +77,9 @@ async function enrichApp(appid: number, cc: string, l: string) {
   return { id: `app:${appid}`, kind: 'game', title, image: header, currency: pov?.currency, priceOriginalCents: pov.initial ?? null, priceFinalCents: pov.final ?? null, discountPct: pov.discount_percent ?? null, tags: allTags }
 }
 
-export default async function searchRoutes(app: FastifyInstance) {
+export default async function searchRoutes(app: any) {
   // /search - Leve e confiável (Steam-only), com paginação e cache
-  app.get('/search', async (req: any, reply: any) => {
+  app.get('/search', async (req: any, res: any) => {
     const schema = z.object({
       q: z.string().min(2),
       page: z.coerce.number().min(1).optional(),
@@ -99,13 +99,13 @@ export default async function searchRoutes(app: FastifyInstance) {
       const cached = cache.get(cacheKey)
       if (cached && cached.length) {
         const start = (pageNum - 1) * pageSize
-        return reply.send(cached.slice(start, start + pageSize))
+  return res.send(cached.slice(start, start + pageSize))
       }
 
       // 1) Buscar candidatos leves via storesearch
       const term = encodeURIComponent(q.trim())
       const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${term}&cc=${cc}&l=${encodeURIComponent(l)}`
-      let data: any = await fetchJson(searchUrl)
+      const data: any = await fetchJson(searchUrl)
       let items: any[] = Array.isArray(data?.items) ? data.items : []
 
       // Fallback: steamcommunity SearchApps se vazio
@@ -116,7 +116,7 @@ export default async function searchRoutes(app: FastifyInstance) {
         }
       }
 
-      if (!items.length) return reply.send([])
+  if (!items.length) return res.send([])
 
       // 2) Enriquecer somente os que vão ser exibidos (primeira página + próximos 20)
       const maxEnrich = Math.min(items.length, pageSize + 20)
@@ -146,7 +146,7 @@ export default async function searchRoutes(app: FastifyInstance) {
       for (const x of out) {
         if (!uniq.has(x.id)) uniq.set(x.id, x)
       }
-      let enriched = Array.from(uniq.values())
+      const enriched = Array.from(uniq.values())
 
       // 4) Ordenação: match texto desc (exato > prefixo > resto), depois desconto desc, depois menor preço final
       const qLower = q.trim().toLowerCase()
@@ -169,10 +169,10 @@ export default async function searchRoutes(app: FastifyInstance) {
       const start = (pageNum - 1) * pageSize
       const pageItems = enriched.slice(start, start + pageSize)
 
-      return reply.send(pageItems)
+      return res.send(pageItems)
     } catch (err) {
       console.error('Erro na rota /search (nova lógica):', err)
-      return reply.status(500).send({ error: 'Erro interno do servidor' })
+      return res.status(500).send({ error: 'Erro interno do servidor' })
     }
   })
 }

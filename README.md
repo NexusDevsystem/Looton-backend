@@ -1,6 +1,6 @@
 # Looton Backend
 
-Fastify + TypeScript + MongoDB (Mongoose), Redis cache and BullMQ jobs.
+Express + TypeScript + MongoDB (Mongoose), Redis cache and BullMQ jobs.
 
 ## Setup
 
@@ -39,6 +39,7 @@ docker compose up -d
 ## Notes
 - Do not commit .env
 - USE_MOCK_ADAPTERS=true will serve mock data for adapters
+- This backend now uses Express instead of Fastify
 
 ## Instruções rápidas (pt-BR)
 

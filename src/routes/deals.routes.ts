@@ -1,12 +1,12 @@
-import { FastifyInstance } from 'fastify'
+import { Request, Response } from 'express'
 import { z } from 'zod'
 import { fetchConsolidatedDeals } from '../services/consolidated-deals.service.js'
 
-export default async function dealsRoutes(app: FastifyInstance) {
+export default async function dealsRoutes(app: any) {
 
 
   // GET /deals - Usando dados consolidados de Steam e Epic Games
-  app.get('/deals', async (req: any, reply: any) => {
+  app.get('/deals', async (req: Request, res: Response) => {
     const schema = z.object({
       limit: z.coerce.number().min(1).max(1000).optional(),
       boost: z.string().optional(), // Parâmetro para preferências de gênero
@@ -15,19 +15,19 @@ export default async function dealsRoutes(app: FastifyInstance) {
     })
   const { limit, boost, cc, l } = schema.parse(req.query)
   // Optional day parameter for simulation (format YYYY-MM-DD recommended)
-  const day = req.query?.day || undefined
+  const day = req.query?.day ? String((req.query as any).day) : undefined
     
     try {
       console.log('🎮 Buscando deals com preços ao vivo da Steam...')
       
       // Usar serviço consolidado que já busca preços atuais
-  let deals = await fetchConsolidatedDeals(limit || 30, { cc, l, dayKey: day })
+  const deals = await fetchConsolidatedDeals(limit || 30, { cc, l, dayKey: day })
       
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       
       // Se não houver deals, retornar array vazio
       if (deals.length === 0) {
-        return reply.send([])
+        return res.send([])
       }
       
       // Converter os deals consolidados para o formato que o frontend espera
@@ -105,17 +105,17 @@ export default async function dealsRoutes(app: FastifyInstance) {
         }
       })
       
-      // Retornar array diretamente como o frontend espera
-      return reply.send(formattedDeals)
+  // Retornar array diretamente como o frontend espera
+  return res.send(formattedDeals)
       
     } catch (error) {
-      console.error('Erro ao buscar deals:', error)
-      return reply.status(500).send({ error: 'Erro interno do servidor' })
+  console.error('Erro ao buscar deals:', error)
+  return res.status(500).send({ error: 'Erro interno do servidor' })
     }
   })
 
   // GET /deals/filter - Filtragem avançada de ofertas
-  app.get('/deals/filter', async (req: any, reply: any) => {
+  app.get('/deals/filter', async (req: any, res: any) => {
     const schema = z.object({
       genres: z.string().optional().transform(val => val ? val.split(',').map(g => g.trim()) : undefined),
       tags: z.string().optional().transform(val => val ? val.split(',').map(t => t.trim()) : undefined),
@@ -127,11 +127,11 @@ export default async function dealsRoutes(app: FastifyInstance) {
     })
 
     // TEMPORARIAMENTE DESABILITADO - usar apenas /deals principal
-    return reply.send([])
+    return res.send([])
   })
 
   // GET /deals/consolidated - Ofertas consolidadas de múltiplas lojas
-  app.get('/deals/consolidated', async (req: any, reply: any) => {
+  app.get('/deals/consolidated', async (req: any, res: any) => {
     const schema = z.object({
       limit: z.coerce.number().min(1).max(100).default(50)
     })
@@ -174,11 +174,11 @@ export default async function dealsRoutes(app: FastifyInstance) {
         bestStore: deal.bestPrice.store
       }))
 
-      return reply.send(formattedDeals)
+      return res.send(formattedDeals)
       
     } catch (error) {
       console.error('❌ Erro ao buscar ofertas consolidadas:', error)
-      return reply.code(500).send({ error: 'Failed to fetch consolidated deals' })
+      return res.status(500).send({ error: 'Failed to fetch consolidated deals' })
     }
   })
 }

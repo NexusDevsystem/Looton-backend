@@ -1,9 +1,15 @@
-import { FastifyInstance, FastifyError, FastifyReply, FastifyRequest } from 'fastify'
+import { Request, Response, NextFunction, Application } from 'express'
 
-export function registerErrorHandler(app: FastifyInstance) {
-  app.setErrorHandler((error: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
-    request.log.error(error)
-    const status = (error as FastifyError).statusCode || 500
-    reply.status(status).send({ error: error.message || 'Internal Server Error' })
+export function registerErrorHandler(app: Application) {
+  // Express error handling middleware
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    // Basic logging
+    try {
+      console.error(err)
+    } catch (e) {
+      // ignore
+    }
+    const status = err?.statusCode || err?.status || 500
+    res.status(status).json({ error: err?.message || 'Internal Server Error' })
   })
 }

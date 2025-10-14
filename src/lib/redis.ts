@@ -73,7 +73,9 @@ export const redis: SimpleRedis | Redis = (() => {
 					warnedPolicy = true
 					console.warn('IMPORTANT! Redis eviction policy is', policy, 'expected "noeviction". Proceeding anyway.')
 				}
-			} catch {}
+			} catch (e) {
+				// Ignorar erros ao verificar política de memória do Redis
+			}
 		}).catch(() => {/* ignore */})
 	}
 	return client

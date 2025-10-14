@@ -46,7 +46,7 @@ export async function searchGames(filters: SearchFilters) {
   const skip = (page - 1) * limit
 
   // Build MongoDB query
-  let gameQuery: any = {}
+  const gameQuery: any = {}
   
   // Text search
   if (q) {

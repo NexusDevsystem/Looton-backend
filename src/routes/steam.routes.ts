@@ -1,13 +1,13 @@
-import { FastifyInstance } from 'fastify'
+// Fastify types removed during Express migration
 import { z } from 'zod' 
 import { getTopDeals } from '../services/offers.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { fetchSteamFeatured, fetchSteamAppPrice } from '../services/steam-api.service.js'
 import { pickImageUrls } from '../utils/imageUtils.js'
 
-export default async function steamRoutes(app: FastifyInstance) {
+export default async function steamRoutes(app: any) {
   // GET /steam/price/:appId - Preço real da Steam com fallback para packages/bundles
-  app.get('/steam/price/:appId', async (req: any, reply: any) => {
+  app.get('/steam/price/:appId', async (req: any, res: any) => {
     const schema = z.object({
       appId: z.string().regex(/^\d+$/).transform(val => parseInt(val))
     })
@@ -19,19 +19,19 @@ export default async function steamRoutes(app: FastifyInstance) {
       const priceData = await fetchSteamAppPrice(appId)
       
       if (!priceData) {
-        return reply.status(404).send({ error: `Sem price para appId=${appId}` })
+        return res.status(404).send({ error: `Sem price para appId=${appId}` })
       }
       
       console.log(`💰 Preço encontrado: ${priceData.priceFinalBRL} (fonte: ${priceData.source})`)
-      return reply.send(priceData)
+      return res.send(priceData)
     } catch (error) {
       console.error('❌ Erro ao buscar preço Steam:', error)
-      return reply.status(500).send({ error: 'Erro interno do servidor' })
+      return res.status(500).send({ error: 'Erro interno do servidor' })
     }
   })
 
   // GET /steam/featured - Ofertas em destaque da Steam (API REAL)
-  app.get('/steam/featured', async (req: any, reply: any) => {
+  app.get('/steam/featured', async (req: any, res: any) => {
     const schema = z.object({
       limit: z.coerce.number().min(1).max(1000).optional()
     })
@@ -53,15 +53,15 @@ export default async function steamRoutes(app: FastifyInstance) {
       }))
       
       console.log(`✅ Retornando ${steamDeals.length} ofertas reais da Steam`)
-      return reply.send(steamDeals)
+      return res.send(steamDeals)
     } catch (error) {
       console.error('❌ Erro ao buscar ofertas Steam:', error)
-      return reply.status(500).send({ error: 'Erro interno do servidor' })
+      return res.status(500).send({ error: 'Erro interno do servidor' })
     }
   })
 
   // GET /steam/search - Busca de jogos da Steam diretamente via adapter (sem DB)
-  app.get('/steam/search', async (req: any, reply: any) => {
+  app.get('/steam/search', async (req: any, res: any) => {
     const schema = z.object({
       q: z.string().min(1),
       limit: z.coerce.number().min(1).max(100).optional()
@@ -72,7 +72,7 @@ export default async function steamRoutes(app: FastifyInstance) {
       const lim = limit || 20
 
       // Call adapter directly (doesn't persist to DB here)
-      let offers = await steamAdapter.search(q)
+      const offers = await steamAdapter.search(q)
 
       // Try to enrich a subset of offers with real Steam prices to avoid heavy load
       const maxFetch = 8
@@ -115,15 +115,15 @@ export default async function steamRoutes(app: FastifyInstance) {
         }
       })
 
-      return reply.send({ games })
+      return res.send({ games })
     } catch (error) {
       console.error('Erro na busca Steam (adapter):', error)
-      return reply.status(500).send({ error: 'Erro interno do servidor' })
+      return res.status(500).send({ error: 'Erro interno do servidor' })
     }
   })
 
   // GET /steam/details/:appId - Detalhes do jogo da Steam
-  app.get('/steam/details/:appId', async (req: any, reply: any) => {
+  app.get('/steam/details/:appId', async (req: any, res: any) => {
     const schema = z.object({
       appId: z.string().regex(/^\d+$/)
     })
@@ -136,14 +136,14 @@ export default async function steamRoutes(app: FastifyInstance) {
       const response = await fetch(steamApiUrl)
       
       if (!response.ok) {
-        return reply.status(404).send({ error: 'Jogo não encontrado' })
+        return res.status(404).send({ error: 'Jogo não encontrado' })
       }
       
       const data = await response.json()
       const gameData = data[appId]
       
       if (!gameData || !gameData.success) {
-        return reply.status(404).send({ error: 'Jogo não encontrado' })
+        return res.status(404).send({ error: 'Jogo não encontrado' })
       }
       
       const game = gameData.data
@@ -184,10 +184,10 @@ export default async function steamRoutes(app: FastifyInstance) {
         legal_notice: game.legal_notice
       }
       
-      return reply.send(gameDetails)
+      return res.send(gameDetails)
     } catch (error) {
       console.error('Erro ao buscar detalhes Steam:', error)
-      return reply.status(500).send({ error: 'Erro interno do servidor' })
+      return res.status(500).send({ error: 'Erro interno do servidor' })
     }
   })
 }

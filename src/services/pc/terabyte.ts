@@ -22,7 +22,9 @@ function extractJsonLd(html: string): any[] {
       const json = JSON.parse(m[1].trim())
       if (Array.isArray(json)) arr.push(...json)
       else arr.push(json)
-    } catch {}
+    } catch (e) {
+      // Ignorar JSON inválido
+    }
   }
   return arr
 }
@@ -199,7 +201,7 @@ export async function fetchDeals(opts: FetchOptions = {}): Promise<PcOffer[]> {
   try {
     // First, try to parse offers directly from many listing pages (promos and deep seeds)
     const pages = await fetchManyListingPages()
-    let collected: PcOffer[] = []
+    const collected: PcOffer[] = []
     for (const pageUrl of pages) {
       const res = await fetchRateLimited(pageUrl)
       if (!res.ok) continue
@@ -235,7 +237,9 @@ export async function fetchDeals(opts: FetchOptions = {}): Promise<PcOffer[]> {
               top[i].discountPct = undefined
             }
           }
-        } catch {}
+        } catch (e) {
+      // Ignorar JSON inválido
+    }
       }
       // write back enriched items
       for (let i = 0; i < top.length; i++) collected[i] = top[i]
@@ -332,7 +336,7 @@ export async function fetchSearch(opts: FetchOptions & { q?: string } = {}): Pro
     } else {
       pages.push(firstUrl)
     }
-    let collected: PcOffer[] = []
+    const collected: PcOffer[] = []
     for (const u of pages) {
       const res = await fetchRateLimited(u)
       if (!res.ok) continue

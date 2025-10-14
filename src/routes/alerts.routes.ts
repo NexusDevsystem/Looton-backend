@@ -1,8 +1,8 @@
-import { FastifyInstance } from 'fastify'
+// Adapted for Express shim - Fastify types removed
 import { z } from 'zod'
 import { createAlert, deleteAlert, getAlertsByUser, registerUser, testNotify, checkAndNotify } from '../services/alerts.service.js'
 
-export default async function alertsRoutes(app: FastifyInstance) {
+export default async function alertsRoutes(app: any) {
   app.post('/users', async (req: any, reply: any) => {
     const schema = z.object({ email: z.string().email(), pushToken: z.string().optional() })
     const body = schema.parse(req.body)

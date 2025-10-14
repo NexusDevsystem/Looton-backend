@@ -1,4 +1,3 @@
-import { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { TB_HARDWARE_COMPONENTS, getHardwareRecommendationsForGame } from '../services/terabyte.hardware';
 
@@ -28,17 +27,17 @@ function getHardwareRecommendations(requirements: string, gameName: string): any
   return getHardwareRecommendationsForGame(requirements, gameName);
 }
 
-export default async function hardwareRecommendationRoutes(app: FastifyInstance) {
+export default async function hardwareRecommendationRoutes(app: any) {
   // Rota para obter hardware recomendado para um jogo específico
-  app.post('/games/:gameId/recommended-hardware', async (request, reply: FastifyReply) => {
+  app.post('/games/:gameId/recommended-hardware', async (req: any, res: any) => {
     try {
-      const { gameId } = request.params as { gameId: string };
-      const { requirements, gameName } = request.body as { requirements?: any; gameName?: string };
+      const { gameId } = req.params as { gameId: string };
+      const { requirements, gameName } = req.body as { requirements?: any; gameName?: string };
       
       // Validar o parâmetro gameId
       const parsedGameId = parseInt(gameId);
       if (isNaN(parsedGameId)) {
-        return reply.status(400).send({ 
+        return res.status(400).send({ 
           error: 'ID do jogo inválido',
           message: 'O ID do jogo deve ser um número'
         });
@@ -77,14 +76,14 @@ export default async function hardwareRecommendationRoutes(app: FastifyInstance)
         return found ? found : r
       })
 
-      return reply.send({
+      return res.send({
         gameAppId: parsedGameId,
         gameName: gameName || `Jogo ${gameId}`,
         recommendedHardware: enriched
       });
     } catch (error) {
       console.error('Erro ao obter hardware recomendado:', error);
-      return reply.status(500).send({
+      return res.status(500).send({
         error: 'Erro interno do servidor',
         message: 'Ocorreu um erro ao obter as recomendações de hardware'
       });
@@ -92,14 +91,14 @@ export default async function hardwareRecommendationRoutes(app: FastifyInstance)
   });
   
   // Rota para obter hardware recomendado diretamente pelo ID do jogo
-  app.get('/games/:gameId/recommended-hardware', async (request, reply: FastifyReply) => {
+  app.get('/games/:gameId/recommended-hardware', async (req: any, res: any) => {
     try {
-      const { gameId } = request.params as { gameId: string };
+      const { gameId } = req.params as { gameId: string };
       
       // Validar o parâmetro gameId
       const parsedGameId = parseInt(gameId);
       if (isNaN(parsedGameId)) {
-        return reply.status(400).send({ 
+        return res.status(400).send({ 
           error: 'ID do jogo inválido',
           message: 'O ID do jogo deve ser um número'
         });
@@ -117,14 +116,14 @@ export default async function hardwareRecommendationRoutes(app: FastifyInstance)
         recommendations = shuffled.slice(0, 6);
       }
       
-      return reply.send({
+      return res.send({
         gameAppId: parsedGameId,
         gameName: `Jogo ${gameId}`,
         recommendedHardware: recommendations
       });
     } catch (error) {
       console.error('Erro ao obter hardware recomendado:', error);
-      return reply.status(500).send({
+      return res.status(500).send({
         error: 'Erro interno do servidor',
         message: 'Ocorreu um erro ao obter as recomendações de hardware'
       });

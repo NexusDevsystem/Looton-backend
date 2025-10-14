@@ -1,17 +1,17 @@
-import fastify from 'fastify'
-import cors from '@fastify/cors'
-import rateLimit from '@fastify/rate-limit'
-import { env } from './env.js'
-import { registerErrorHandler } from './middlewares/errorHandler.js'
-import routes from './routes/index.js'
-
+import express, { Request, Response, Router } from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import { env } from './env.js';
+import routes from './routes/index.js';
 
 export function buildApp() {
-  const app = fastify({
-    logger: env.NODE_ENV === 'development' ? { transport: { target: 'pino-pretty' } } : true
-  })
+  const app = express();
 
-  app.register(cors, { 
+  // Middleware para parsing de JSON
+  app.use(express.json());
+
+  // Configuração de CORS
+  app.use(cors({
     origin: [
       // Permitir todas as origens para desenvolvimento e produção
       // Em produção, substitua por domínios específicos se necessário
@@ -27,24 +27,32 @@ export function buildApp() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With']
-  })
-  app.register(rateLimit, {
-    max: env.RATE_LIMIT_MAX,
-    timeWindow: env.RATE_LIMIT_WINDOW_MS
-  })
+  }));
 
-  registerErrorHandler(app)
+  // Middleware de rate limiting
+  const limiter = rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    max: env.RATE_LIMIT_MAX
+  });
+  app.use(limiter);
 
-  app.get('/', async () => ({ 
-    name: 'Looton Backend API',
-    version: '1.0.0',
-    status: 'ok',
-    endpoints: ['/deals', '/health', '/pc-deals']
-  }))
+  // Aplicar as rotas
+  app.use('/', routes);
 
-  app.get('/health', async () => ({ ok: true }))
+  // Rota principal
+  app.get('/', (req: Request, res: Response) => {
+    res.json({ 
+      name: 'Looton Backend API',
+      version: '1.0.0',
+      status: 'ok',
+      endpoints: ['/deals', '/health', '/pc-deals']
+    });
+  });
 
-  app.register(routes, { prefix: '/' })
+  // Rota de health check
+  app.get('/health', (req: Request, res: Response) => {
+    res.json({ ok: true });
+  });
 
-  return app
+  return app;
 }

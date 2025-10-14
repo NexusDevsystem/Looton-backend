@@ -1,8 +1,8 @@
-import { FastifyInstance } from 'fastify'
+// Adapted for Express shim - Fastify types removed
 import { getBRLRate } from '../adapters/currency.service.js'
 
-export default async function currencyRoutes(app: FastifyInstance) {
-  app.get('/currency', async (request, reply) => {
+export default async function currencyRoutes(app: any) {
+  app.get('/currency', async (request: any, reply: any) => {
     const base = (request.query as any)?.base || 'BRL'
     try {
       const rate = await getBRLRate(base)

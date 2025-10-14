@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify'
+// Fastify types removed during Express migration
 
 // Função para buscar dados atuais da Steam API
 async function fetchSteamAppDetails(appId: string) {
@@ -26,10 +26,10 @@ async function fetchSteamAppDetails(appId: string) {
 
 // Dados reais da Steam API - sem simulação
 
-export default async function priceHistoryRoutes(app: FastifyInstance) {
-  app.get('/price-history/:gameId', async (request, reply) => {
+export default async function priceHistoryRoutes(app: any) {
+  app.get('/price-history/:gameId', async (req: any, res: any) => {
     try {
-      const { gameId } = request.params as { gameId: string }
+      const { gameId } = req.params as { gameId: string }
       
       console.log(`Buscando dados REAIS da Steam para appId: ${gameId}`)
       
@@ -37,7 +37,7 @@ export default async function priceHistoryRoutes(app: FastifyInstance) {
       const steamData = await fetchSteamAppDetails(gameId)
       
       if (!steamData.success || !steamData.price) {
-        return reply.status(404).send({
+        return res.status(404).send({
           error: 'Dados não encontrados',
           message: 'Não foi possível obter dados atuais da Steam para este jogo'
         })
@@ -52,7 +52,7 @@ export default async function priceHistoryRoutes(app: FastifyInstance) {
         }
       }]
       
-      return reply.send({
+      return res.send({
         gameId,
         gameTitle: `Jogo ${gameId}`,
         period: 'Dados atuais da Steam',
@@ -83,7 +83,7 @@ export default async function priceHistoryRoutes(app: FastifyInstance) {
       
     } catch (error) {
       console.error('Erro ao buscar dados da Steam:', error)
-      return reply.status(500).send({ 
+      return res.status(500).send({ 
         error: 'Erro interno do servidor',
         message: error instanceof Error ? error.message : 'Erro desconhecido'
       })

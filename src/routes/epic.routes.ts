@@ -1,10 +1,8 @@
-import { FastifyInstance } from 'fastify'
-
-export default async function epicRoutes(app: FastifyInstance) {
+export default async function epicRoutes(app: any) {
   // Endpoint para detalhes de jogos Epic
-  app.get('/epic/details/:gameId', async (request, reply) => {
+  app.get('/epic/details/:gameId', async (req: any, res: any) => {
     try {
-      const { gameId } = request.params as { gameId: string }
+      const { gameId } = req.params as { gameId: string }
       
       // Dados detalhados dos jogos Epic Games populares
       const epicGameDetails: Record<string, any> = {
@@ -115,16 +113,16 @@ export default async function epicRoutes(app: FastifyInstance) {
       const gameDetail = epicGameDetails[gameId]
       
       if (!gameDetail) {
-        return reply.status(404).send({
+        return res.status(404).send({
           error: 'Game not found',
           message: `Epic Game with ID ${gameId} not found`
         })
       }
-      
-      return reply.send(gameDetail)
+
+      return res.send(gameDetail)
     } catch (error) {
       console.error('Error in Epic details route:', error)
-      return reply.status(500).send({
+      return res.status(500).send({
         error: 'Failed to fetch game details',
         message: error instanceof Error ? error.message : 'Unknown error'
       })

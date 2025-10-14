@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify'
+// Fastify types removed during migration to Express
 import { getCurrentPcFeed, rebuildPcFeed } from '../services/pc/aggregate.js'
 import * as terabyte from '../services/pc/terabyte.js'
 import type { PcOffer } from '../services/pc/types.js'
@@ -6,8 +6,8 @@ import { env } from '../env.js'
 
 const fullCache = new Map<string, { at: number; payload: { slotDate: string; items: PcOffer[] } }>()
 
-export default async function pcRoutes(app: FastifyInstance) {
-  app.get('/pc-deals', async (req, reply) => {
+export default async function pcRoutes(app: any) {
+  app.get('/pc-deals', async (req: any, res: any) => {
     const q = req.query as any
     const limit = Math.min(200, Number(q.limit) || undefined || 40)
     const stores = typeof q.store === 'string' ? (q.store as string).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : []
@@ -193,14 +193,14 @@ export default async function pcRoutes(app: FastifyInstance) {
           try {
             // Simple pagination by offset on top of concat pages from fetchSearch
             const pageSize = Math.min(120, limit || 60)
-            const res = await terabyte.fetchSearch({ q: text, limit: offset ? offset + pageSize : pageSize })
-            let items = res || []
+            const connectorRes = await terabyte.fetchSearch({ q: text, limit: offset ? offset + pageSize : pageSize })
+            let items = connectorRes || []
             if (offset) items = items.slice(offset)
             if (limit) items = items.slice(0, limit)
-            return reply.send({ slotDate: new Date().toISOString(), items })
+            return res.send({ slotDate: new Date().toISOString(), items })
           } catch (e) {
-            req.log.warn({ err: e }, 'terabyte search failed')
-            return reply.send({ slotDate: new Date().toISOString(), items: [] })
+            console.warn('terabyte search failed', e)
+            return res.send({ slotDate: new Date().toISOString(), items: [] })
           }
         }
         // For other stores in future, fallback to raw fetch + text filter
@@ -208,19 +208,19 @@ export default async function pcRoutes(app: FastifyInstance) {
       const cacheKey = JSON.stringify({ stores, categories, limit, full: true })
       const cached = fullCache.get(cacheKey)
       if (cached && Date.now() - cached.at < env.PC_FULL_CACHE_TTL_SECONDS * 1000) {
-        return reply.send(cached.payload)
+        return res.send(cached.payload)
       }
       const map: Record<string, (o?: any) => Promise<PcOffer[]>> = {
         terabyte: (o?: any) => terabyte.fetchDeals(o)
       }
       const selected = (stores.length ? stores : Object.keys(map)).filter((s) => map[s])
-      let raw: PcOffer[] = []
+      const raw: PcOffer[] = []
       for (const s of selected) {
         try {
           const part = await map[s]({ limit: Number(q.limit) || 500 })
           raw.push(...(part || []))
         } catch (e) {
-          req.log.warn({ err: e, store: s }, 'pc full mode connector error')
+          console.warn('pc full mode connector error', { err: e, store: s })
         }
       }
       // dedupe by ean/sku/url keeping best price
@@ -243,7 +243,7 @@ export default async function pcRoutes(app: FastifyInstance) {
   if (limit) items = items.slice(0, limit)
       const payload = { slotDate: new Date().toISOString(), items }
       fullCache.set(cacheKey, { at: Date.now(), payload })
-      return reply.send(payload)
+      return res.send(payload)
     }
     if (q.refresh === '1' || q.refresh === 1) {
       try {
@@ -251,7 +251,7 @@ export default async function pcRoutes(app: FastifyInstance) {
           () => terabyte.fetchDeals({ limit: 50 })
         ])
       } catch (e) {
-        req.log.warn({ err: e }, 'failed manual pc rebuild')
+        console.warn('failed manual pc rebuild', e)
       }
     }
     const feed = getCurrentPcFeed()
@@ -262,6 +262,6 @@ export default async function pcRoutes(app: FastifyInstance) {
       items = items.filter((it) => matchesSmart(it, text))
     }
     if (limit) items = items.slice(0, limit)
-    return reply.send({ slotDate: feed.slotDate, items })
+    return res.send({ slotDate: feed.slotDate, items })
   })
 }

@@ -1,13 +1,12 @@
-import { FastifyInstance } from 'fastify';
 import { getHardwareRecommendationsForGame, TB_HARDWARE_COMPONENTS } from '../services/terabyte.hardware';
 
-export default async function (fastify: FastifyInstance) {
-  fastify.get('/games/:appId/recommended-hardware', async (request, reply) => {
-    const { appId } = request.params as any;
+export default async function (app: any) {
+  app.get('/games/:appId/recommended-hardware', async (req: any, res: any) => {
+    const { appId } = req.params as any;
 
     // For now try to read game requirements from query or return generic recommendations
     // In a real setup we'd fetch game details from DB or external API
-    const fakeRequirements = request.query && (request.query as any).requirements;
+    const fakeRequirements = req.query && (req.query as any).requirements;
 
     const recommendations = getHardwareRecommendationsForGame(fakeRequirements || '', String(appId));
 
@@ -25,7 +24,7 @@ export default async function (fastify: FastifyInstance) {
       specs: c.specs || null,
     }));
 
-    return reply.send({
+    return res.send({
       gameAppId: Number(appId) || null,
       gameName: null,
       recommendedHardware: normalized,
@@ -33,9 +32,9 @@ export default async function (fastify: FastifyInstance) {
   });
 
   // POST variant used by associateHardwareWithGame in the mobile client
-  fastify.post('/games/:appId/recommended-hardware', async (request, reply) => {
-    const { appId } = request.params as any;
-    const body = request.body as any;
+  app.post('/games/:appId/recommended-hardware', async (req: any, res: any) => {
+    const { appId } = req.params as any;
+    const body = req.body as any;
 
     const requirements = body?.requirements || '';
     const gameName = body?.gameName || null;
@@ -55,7 +54,7 @@ export default async function (fastify: FastifyInstance) {
       specs: c.specs || null,
     }));
 
-    return reply.send({
+    return res.send({
       gameAppId: Number(appId) || null,
       gameName: gameName,
       recommendedHardware: normalized,

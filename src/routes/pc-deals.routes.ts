@@ -1,12 +1,11 @@
-import { FastifyInstance } from 'fastify'
 import { TB_HARDWARE_COMPONENTS } from '../services/terabyte.hardware'
 
-export default async function pcDealsRoutes(app: FastifyInstance) {
-  app.get('/pc-deals', async (request, reply) => {
+export default async function pcDealsRoutes(app: any) {
+  app.get('/pc-deals', async (req: any, res: any) => {
     try {
-      const q = (request.query as any)?.q || ''
-      const limit = parseInt((request.query as any)?.limit || '30', 10)
-      const offset = parseInt((request.query as any)?.offset || '0', 10)
+      const q = (req.query as any)?.q || ''
+      const limit = parseInt((req.query as any)?.limit || '30', 10)
+      const offset = parseInt((req.query as any)?.offset || '0', 10)
 
       // Simple text filter on name/brand/specs
       const filtered = TB_HARDWARE_COMPONENTS.filter(c => {
@@ -33,10 +32,10 @@ export default async function pcDealsRoutes(app: FastifyInstance) {
         updatedAt: new Date().toISOString()
       }))
 
-      return reply.send({ slotDate: new Date().toISOString().split('T')[0], items })
+      return res.send({ slotDate: new Date().toISOString().split('T')[0], items })
     } catch (err) {
       console.error('Erro em /pc-deals:', err)
-      return reply.status(500).send({ error: 'Erro interno' })
+      return res.status(500).send({ error: 'Erro interno' })
     }
   })
 }

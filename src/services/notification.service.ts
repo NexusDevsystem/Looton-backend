@@ -49,7 +49,7 @@ export async function sendPush(token: string, title: string, body: string, data 
       // Inicializar o Firebase Admin SDK se ainda não estiver inicializado
       if (admin.apps.length === 0) {
         if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-          const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+          const serviceAccount = await import(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
           admin.initializeApp({
             credential: admin.credential.cert(serviceAccount)
           });
