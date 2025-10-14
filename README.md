@@ -1,6 +1,6 @@
 # Looton Backend
 
-Express + TypeScript + MongoDB (Mongoose), Redis cache and BullMQ jobs.
+Express + TypeScript + MongoDB (Mongoose), Redis cache, BullMQ jobs, Firebase Push Notifications and Analytics.
 
 ## Setup
 
@@ -32,14 +32,58 @@ docker compose up -d
 - DELETE /alerts/:id
 - POST /notify/test
 
+## Firebase Push Notifications Routes
+- POST /notifications/register-token - Registra token de dispositivo para notificações push
+- POST /notifications/remove-token - Remove token de dispositivo
+- GET /notifications/tokens/:userId - Obtém tokens válidos de um usuário
+
+## Analytics Routes
+- POST /analytics/event - Envia evento de analytics do app
+- GET /analytics/metrics - Obtém métricas de uso (requer autenticação)
+- GET /analytics/users - Obtém dados de usuários (requer autenticação)
+
 ## Jobs (BullMQ)
 - updateAllStores (cron via DEALS_REFRESH_CRON)
 - refreshCurrency (cron via CURRENCY_REFRESH_CRON)
 
+## Firebase Integration
+- **Firebase Project ID**: looton-a2877
+- **Firebase App ID**: 1:464064480689:android:bfa938a4b94c4b44b86990
+- **Android Package**: com.nexusdevsystem.looton
+- **FCM Server Key**: Configurado via variável de ambiente FCM_SERVER_KEY
+
+### Push Notifications Features:
+- Register/unregister device tokens
+- Send price change notifications
+- Send deal notifications
+- Token validation and cleanup
+- Multi-device notification support
+
+## Analytics Features
+- Event tracking from app
+- User metrics and demographics
+- Request analytics
+- Active user tracking (daily, weekly, monthly)
+- Popular endpoints tracking
+- Session duration analytics
+
+### Analytics Metrics Available:
+- Total requests
+- Active users (daily, weekly, monthly)
+- New users
+- Top events
+- Most popular endpoints
+- User retention rates
+- User distribution by country
+- Average session duration
+
 ## Notes
 - Do not commit .env
 - USE_MOCK_ADAPTERS=true will serve mock data for adapters
-- This backend now uses Express instead of Fastify
+- This backend now uses Fastify instead of Express
+- FCM_SERVER_KEY is required for push notifications
+- ANALYTICS_API_KEY is required for accessing analytics data
+- Analytics data is stored in-memory (for production, implement database storage)
 
 ## Instruções rápidas (pt-BR)
 
@@ -54,6 +98,8 @@ npm install
 ```
 JWT_SECRET=uma_chave_secreta_de_desenvolvimento
 MONGODB_URI=mongodb://localhost:27017/looton
+FCM_SERVER_KEY=72HFzbtSTbGHZbVOYAxs6A
+ANALYTICS_API_KEY=analytics_key_looton_2025
 ```
 
 3) Rodar em desenvolvimento:

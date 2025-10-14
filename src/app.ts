@@ -1,17 +1,16 @@
-import express, { Request, Response, Router } from 'express';
-import cors from 'cors';
-import rateLimit from 'express-rate-limit';
+import fastify from 'fastify';
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { env } from './env.js';
+import { registerErrorHandler } from './middlewares/errorHandler.js';
 import routes from './routes/index.js';
 
-export function buildApp() {
-  const app = express();
+export async function buildApp() {
+  const app = fastify({
+    logger: env.NODE_ENV === 'development' ? { transport: { target: 'pino-pretty' } } : true
+  });
 
-  // Middleware para parsing de JSON
-  app.use(express.json());
-
-  // Configuração de CORS
-  app.use(cors({
+  app.register(cors, {
     origin: [
       // Permitir todas as origens para desenvolvimento e produção
       // Em produção, substitua por domínios específicos se necessário
@@ -27,21 +26,17 @@ export function buildApp() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With']
-  }));
-
-  // Middleware de rate limiting
-  const limiter = rateLimit({
-    windowMs: env.RATE_LIMIT_WINDOW_MS,
-    max: env.RATE_LIMIT_MAX
   });
-  app.use(limiter);
 
-  // Aplicar as rotas
-  app.use('/', routes);
+  app.register(rateLimit, {
+    max: env.RATE_LIMIT_MAX,
+    timeWindow: env.RATE_LIMIT_WINDOW_MS
+  });
 
-  // Rota principal
-  app.get('/', (req: Request, res: Response) => {
-    res.json({ 
+  registerErrorHandler(app);
+
+  app.get('/', async (req, reply) => {
+    reply.send({
       name: 'Looton Backend API',
       version: '1.0.0',
       status: 'ok',
@@ -49,10 +44,11 @@ export function buildApp() {
     });
   });
 
-  // Rota de health check
-  app.get('/health', (req: Request, res: Response) => {
-    res.json({ ok: true });
+  app.get('/health', async (req, reply) => {
+    reply.send({ ok: true });
   });
+
+  app.register(routes, { prefix: '/' });
 
   return app;
 }

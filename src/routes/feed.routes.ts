@@ -1,8 +1,9 @@
+import { FastifyPluginAsync } from 'fastify'
 import { getDailySteamDeals, clearDailyDealsCache } from '../services/daily-steam-deals.service.js'
 import { getPermanentDeals, clearPermanentDealsCache } from '../services/permanent-deals-cache.service.js'
 
-export default async function feedRoutes(app: any) {
-  app.get('/feed', async (req: any, res: any) => {
+const feedRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get('/feed', async (req, reply) => {
     const query = req.query as Record<string, string | undefined>
     const limit = Math.min(100, Math.max(1, parseInt(String(query.limit ?? '30'), 10)))
     const forceRefresh = (query.refresh === 'true') || (query.refresh === '1')
@@ -34,8 +35,8 @@ export default async function feedRoutes(app: any) {
 
       const final = uniq.slice(0, limit)
 
-      res.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
-      return res.send(final.map((d: any) => ({
+      reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=120')
+      return reply.send(final.map((d: any) => ({
         id: d.storeAppId || d.title,
         title: d.title,
         originalPrice: d.priceBase,
@@ -47,8 +48,10 @@ export default async function feedRoutes(app: any) {
       })))
     } catch (err: any) {
       console.error?.(err, 'feed error')
-      res.status(500)
-      return res.send({ error: err?.message || 'feed_error' })
+      reply.status(500)
+      return reply.send({ error: err?.message || 'feed_error' })
     }
   })
 }
+
+export default feedRoutes

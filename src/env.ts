@@ -94,7 +94,9 @@ const envSchema = z.object({
   TBT_COOKIE: z.string().default(''),
   KABUM_COOKIE: z.string().default(''),
   // Firebase Admin SDK configuration
-  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional()
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+  // Firebase Push Notification Configuration
+  FCM_SERVER_KEY: z.string().optional()
 })
 
 export const env = envSchema.parse(process.env)

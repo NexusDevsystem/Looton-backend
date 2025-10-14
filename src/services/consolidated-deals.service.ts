@@ -1,5 +1,6 @@
 ﻿import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { shuffleWithSeed, stringToSeed } from '../utils/seedable-prng.js'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js'
 export interface ConsolidatedDeal {
   id: string // app:123 | package:456 | bundle:789
   title: string
@@ -37,7 +38,7 @@ function cacheKey(cc: string, l: string) {
 
 async function fetchSpecials(cc: string, l: string) {
   const url = `https://store.steampowered.com/api/featuredcategories?cc=${cc}&l=${l}`
-  const res = await fetch(url)
+  const res = await fetchWithTimeout(url, {}, 15000) // 15 segundos
   if (!res.ok) return [] as any[]
   const json = await res.json()
   const items: any[] = json?.specials?.items ?? []
@@ -66,27 +67,64 @@ type Normalized = {
 }
 
 async function resolveApp(appid: number, cc: string, l: string): Promise<Normalized | undefined> {
-  const resp = await fetch(`https://store.steampowered.com/api/appdetails/?appids=${appid}&cc=${cc}&l=${l}`)
-  if (!resp.ok) return undefined
-  const data = await resp.json() as any
-  const node = data[String(appid)]
-  if (!node?.success) return undefined
-  const d = node.data
-  const type = (d?.type as string) || 'game'
-  const title = d?.name as string
-  const header = d?.header_image as string | undefined
-  const url = `https://store.steampowered.com/app/${appid}/`
-  
-  // Extract genres and categories from Steam API
-  const genres = (d?.genres || []).map((g: any) => g?.description || '').filter(Boolean)
-  const categories = (d?.categories || []).map((c: any) => c?.description || '').filter(Boolean)
-  const allTags = [...new Set([...genres, ...categories])]
+  try {
+    const resp = await fetchWithTimeout(`https://store.steampowered.com/api/appdetails/?appids=${appid}&cc=${cc}&l=${l}`, {}, 10000) // 10 segundos
+    if (!resp.ok) return undefined
+    const data = await resp.json() as any
+    const node = data[String(appid)]
+    if (!node?.success) return undefined
+    const d = node.data
+    const type = (d?.type as string) || 'game'
+    const title = d?.name as string
+    const header = d?.header_image as string | undefined
+    const url = `https://store.steampowered.com/app/${appid}/`
+    
+    // Extract genres and categories from Steam API
+    const genres = (d?.genres || []).map((g: any) => g?.description || '').filter(Boolean)
+    const categories = (d?.categories || []).map((c: any) => c?.description || '').filter(Boolean)
+    const allTags = [...new Set([...genres, ...categories])]
 
-  if (type === 'game') {
-    if (d?.is_free || !d?.price_overview) {
-      return { kind: 'game', id: `app:${appid}`, title, coverUrl: header, url, isFree: true, tags: allTags }
+    if (type === 'game') {
+      if (d?.is_free || !d?.price_overview) {
+        return { kind: 'game', id: `app:${appid}`, title, coverUrl: header, url, isFree: true, tags: allTags }
+      }
+      const pov = d.price_overview
+      const currency = pov?.currency as string | undefined
+      return {
+        kind: 'game',
+        id: `app:${appid}`,
+        title,
+        coverUrl: header,
+        url,
+        priceOriginalCents: pov?.initial,
+        priceFinalCents: pov?.final,
+        discountPct: pov?.discount_percent,
+        currency,
+        tags: allTags
+      }
     }
-    const pov = d.price_overview
+
+    if (type === 'dlc') {
+      const pov = d?.price_overview
+      const currency = pov?.currency as string | undefined
+      const baseGameTitle = d?.fullgame?.name as string | undefined
+      return {
+        kind: 'dlc',
+        id: `app:${appid}`,
+        title,
+        coverUrl: header,
+        url,
+        priceOriginalCents: pov?.initial,
+        priceFinalCents: pov?.final,
+        discountPct: pov?.discount_percent,
+        currency,
+        baseGameTitle,
+        tags: allTags
+      }
+    }
+
+    // Outros tipos tratados como app comum
+    const pov = d?.price_overview
     const currency = pov?.currency as string | undefined
     return {
       kind: 'game',
@@ -100,89 +138,67 @@ async function resolveApp(appid: number, cc: string, l: string): Promise<Normali
       currency,
       tags: allTags
     }
-  }
-
-  if (type === 'dlc') {
-    const pov = d?.price_overview
-    const currency = pov?.currency as string | undefined
-    const baseGameTitle = d?.fullgame?.name as string | undefined
-    return {
-      kind: 'dlc',
-      id: `app:${appid}`,
-      title,
-      coverUrl: header,
-      url,
-      priceOriginalCents: pov?.initial,
-      priceFinalCents: pov?.final,
-      discountPct: pov?.discount_percent,
-      currency,
-      baseGameTitle,
-      tags: allTags
-    }
-  }
-
-  // Outros tipos tratados como app comum
-  const pov = d?.price_overview
-  const currency = pov?.currency as string | undefined
-  return {
-    kind: 'game',
-    id: `app:${appid}`,
-    title,
-    coverUrl: header,
-    url,
-    priceOriginalCents: pov?.initial,
-    priceFinalCents: pov?.final,
-    discountPct: pov?.discount_percent,
-    currency,
-    tags: allTags
+  } catch (error) {
+    console.error(`Erro ao resolver app ${appid}:`, error)
+    return undefined
   }
 }
 
 async function resolvePackage(packageid: number, cc: string, l: string): Promise<Normalized | undefined> {
-  const resp = await fetch(`https://store.steampowered.com/api/packagedetails/?packageids=${packageid}&cc=${cc}&l=${l}`)
-  if (!resp.ok) return undefined
-  const data = await resp.json() as any
-  const node = data[String(packageid)]
-  if (!node?.success) return undefined
-  const d = node.data
-  const title = d?.name as string
-  const header = d?.header_image as string | undefined
-  const url = `https://store.steampowered.com/sub/${packageid}/`
-  const price = d?.price
-  return {
-    kind: 'package',
-    id: `package:${packageid}`,
-    title,
-    coverUrl: header,
-    url,
-    priceOriginalCents: price?.initial,
-    priceFinalCents: price?.final,
-    discountPct: price?.discount_percent,
-    currency: price?.currency
+  try {
+    const resp = await fetchWithTimeout(`https://store.steampowered.com/api/packagedetails/?packageids=${packageid}&cc=${cc}&l=${l}`, {}, 10000) // 10 segundos
+    if (!resp.ok) return undefined
+    const data = await resp.json() as any
+    const node = data[String(packageid)]
+    if (!node?.success) return undefined
+    const d = node.data
+    const title = d?.name as string
+    const header = d?.header_image as string | undefined
+    const url = `https://store.steampowered.com/sub/${packageid}/`
+    const price = d?.price
+    return {
+      kind: 'package',
+      id: `package:${packageid}`,
+      title,
+      coverUrl: header,
+      url,
+      priceOriginalCents: price?.initial,
+      priceFinalCents: price?.final,
+      discountPct: price?.discount_percent,
+      currency: price?.currency
+    }
+  } catch (error) {
+    console.error(`Erro ao resolver package ${packageid}:`, error)
+    return undefined
   }
 }
 
 async function resolveBundle(bundleid: number, cc: string, l: string): Promise<Normalized | undefined> {
-  const resp = await fetch(`https://store.steampowered.com/api/bundledetails/?bundleids=${bundleid}&cc=${cc}&l=${l}`)
-  if (!resp.ok) return undefined
-  const data = await resp.json() as any
-  const node = data[String(bundleid)]
-  if (!node?.success) return undefined
-  const d = node.data
-  const title = d?.name as string
-  const header = d?.header_image as string | undefined
-  const url = `https://store.steampowered.com/bundle/${bundleid}/`
-  const price = d?.price
-  return {
-    kind: 'bundle',
-    id: `bundle:${bundleid}`,
-    title,
-    coverUrl: header,
-    url,
-    priceOriginalCents: price?.initial,
-    priceFinalCents: price?.final,
-    discountPct: price?.discount_percent,
-    currency: price?.currency
+  try {
+    const resp = await fetchWithTimeout(`https://store.steampowered.com/api/bundledetails/?bundleids=${bundleid}&cc=${cc}&l=${l}`, {}, 10000) // 10 segundos
+    if (!resp.ok) return undefined
+    const data = await resp.json() as any
+    const node = data[String(bundleid)]
+    if (!node?.success) return undefined
+    const d = node.data
+    const title = d?.name as string
+    const header = d?.header_image as string | undefined
+    const url = `https://store.steampowered.com/bundle/${bundleid}/`
+    const price = d?.price
+    return {
+      kind: 'bundle',
+      id: `bundle:${bundleid}`,
+      title,
+      coverUrl: header,
+      url,
+      priceOriginalCents: price?.initial,
+      priceFinalCents: price?.final,
+      discountPct: price?.discount_percent,
+      currency: price?.currency
+    }
+  } catch (error) {
+    console.error(`Erro ao resolver bundle ${bundleid}:`, error)
+    return undefined
   }
 }
 

@@ -1,92 +1,156 @@
-import { Expo } from 'expo-server-sdk'
+import { admin } from './firebase.service.js';
+import { OfferDTO } from '../adapters/types.js';
 
-// Criar instância do Expo SDK
-const expo = new Expo()
-
-// Lista de tokens de push dos usuários (em produção viria do banco)
-const userPushTokens = new Set<string>()
-
-export interface BestPriceNotificationData {
-  gameId: string
-  gameTitle: string
-  price: number
-  store: string
-  previousBest: number
+interface PushNotification {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  tokens: string[];
 }
 
-export async function sendBestPriceNotification(data: BestPriceNotificationData) {
-  const { gameTitle, price, store, previousBest } = data
-  
-  const messages = Array.from(userPushTokens)
-    .filter(token => Expo.isExpoPushToken(token))
-    .map(token => ({
-      to: token,
-      sound: 'default' as const,
-      title: '🔥 Melhor Preço Histórico!',
-      body: `${gameTitle} está por R$ ${price.toFixed(2)} na ${store}! (antes: R$ ${previousBest.toFixed(2)})`,
-      data: {
-        type: 'best_price_alert',
-        gameId: data.gameId,
-        gameTitle,
-        price,
-        store,
-        url: `/game/${data.gameId}`
-      },
-      priority: 'high' as const,
-      channelId: 'price-alerts'
-    }))
+export interface NotificationRule {
+  id: string;
+  userId: string;
+  gameId: string;
+  notifyUp: boolean;
+  notifyDown: boolean;
+  pctThreshold: number;
+  desiredPriceCents: number;
+  active: boolean;
+  createdAt: Date;
+  lastNotifiedAt?: Date;
+}
 
-  if (messages.length === 0) {
-    console.log('Nenhum token de push registrado')
-    return
-  }
-
-  console.log(`Enviando ${messages.length} notificações de melhor preço para ${gameTitle}`)
-
-  // Enviar notificações em lotes
-  const chunks = expo.chunkPushNotifications(messages)
-  const tickets = []
-
-  for (const chunk of chunks) {
+export class FirebaseNotificationService {
+  static async sendPushNotifications(notification: PushNotification): Promise<boolean> {
     try {
-      const ticketChunk = await expo.sendPushNotificationsAsync(chunk)
-      tickets.push(...ticketChunk)
+      if (!notification.tokens || notification.tokens.length === 0) {
+        console.log('Nenhum token de dispositivo fornecido para envio de notificação');
+        return false;
+      }
+
+      // Envia notificações individualmente para cada token, já que sendMulticast pode não estar disponível
+      const results = await Promise.allSettled(
+        notification.tokens.map(token => 
+          admin.messaging().send({
+            token: token,
+            notification: {
+              title: notification.title,
+              body: notification.body,
+            },
+            data: notification.data || {},
+            android: {
+              priority: 'high',
+              notification: {
+                icon: '@mipmap/ic_launcher',
+                color: '#FF9800',
+                sound: 'default'
+              }
+            },
+            apns: {
+              payload: {
+                aps: {
+                  badge: 1,
+                  sound: 'default'
+                }
+              }
+            }
+          })
+        )
+      );
+
+      const successfulSends = results.filter(result => result.status === 'fulfilled').length;
+      const failedSends = results.filter(result => result.status === 'rejected').length;
+      
+      console.log(`Notificação enviada: ${successfulSends} sucesso, ${failedSends} falhas`);
+      
+      // Verifica se houve falhas e registra quais tokens falharam
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`Falha no token ${notification.tokens[index]}:`, result.reason);
+        }
+      });
+
+      return successfulSends > 0;
     } catch (error) {
-      console.error('Erro ao enviar lote de notificações:', error)
+      console.error('Erro ao enviar notificação via Firebase:', error);
+      return false;
     }
   }
 
-  // Verificar recibos (opcional - para tracking de entrega)
-  const receiptIds = tickets
-    .filter(ticket => ticket.status === 'ok')
-    .map(ticket => ticket.id)
+  static async sendGamePriceNotification(
+    tokens: string[],
+    gameTitle: string,
+    currentPrice: number,
+    originalPrice: number,
+    discountPct: number,
+    changeType: 'up' | 'down'
+  ): Promise<boolean> {
+    let title, body;
 
-  if (receiptIds.length > 0) {
-    console.log(`${receiptIds.length} notificações enviadas com sucesso`)
+    if (changeType === 'down') {
+      title = `🎉 Preço Baixou!`;
+      body = `${gameTitle} está com ${discountPct}% de desconto! De R$${originalPrice.toFixed(2)} por R$${currentPrice.toFixed(2)}`;
+    } else {
+      title = `📈 Preço Subiu!`;
+      body = `${gameTitle} subiu de R$${originalPrice.toFixed(2)} para R$${currentPrice.toFixed(2)}`;
+    }
+
+    const data = {
+      gameId: gameTitle.toLowerCase().replace(/\s+/g, '-'),
+      gameTitle,
+      price: currentPrice.toString(),
+      discount: discountPct.toString(),
+      changeType
+    };
+
+    return this.sendPushNotifications({
+      title,
+      body,
+      data,
+      tokens
+    });
   }
 
-  return tickets
-}
+  static async sendDealNotification(tokens: string[], deal: OfferDTO): Promise<boolean> {
+    const title = `🔥 Nova Oferta!`;
+    const body = `${deal.title} está com ${deal.discountPct}% de desconto por R$${deal.priceFinal.toFixed(2)}`;
+    
+    const data = {
+      gameId: deal.storeAppId,
+      gameTitle: deal.title,
+      store: deal.store,
+      price: deal.priceFinal.toString(),
+      discount: deal.discountPct?.toString() || '0',
+      url: deal.url
+    };
 
-export function addUserPushToken(token: string) {
-  if (Expo.isExpoPushToken(token)) {
-    userPushTokens.add(token)
-    console.log('Token de push registrado:', token)
-    return true
-  } else {
-    console.warn('Token de push inválido:', token)
-    return false
+    return this.sendPushNotifications({
+      title,
+      body,
+      data,
+      tokens
+    });
   }
-}
 
-export function removeUserPushToken(token: string) {
-  const removed = userPushTokens.delete(token)
-  if (removed) {
-    console.log('Token de push removido:', token)
+  static async validateToken(token: string): Promise<boolean> {
+    try {
+      // Testa o token tentando enviar uma mensagem vazia (irá falhar, mas sabemos que o token é válido)
+      await admin.messaging().send({
+        token: token,
+        data: { test: 'true' }
+      });
+      return true;
+    } catch (error) {
+      // O token é inválido se recebermos um erro específico
+      const errorMessage = (error as any).message;
+      if (errorMessage.includes('invalid registration token') || 
+          errorMessage.includes('not found') ||
+          errorMessage.includes('unregistered')) {
+        return false;
+      }
+      // Outros erros podem ser temporários, consideramos o token como válido por enquanto
+      return true;
+    }
   }
-  return removed
-}
-
-export function getUserPushTokensCount(): number {
-  return userPushTokens.size
 }
