@@ -2,7 +2,6 @@ import { FastifyInstance } from 'fastify'
 import { getIntelligentFeed, enrichGameData, FeedParams } from '../services/intelligent-feed.service.js'
 import { servedGamesTracker } from '../services/served-games-cache.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
-import { epicAdapter } from '../adapters/epic.adapter.js'
 import { getCurrentFeed } from '../services/curate.js'
 
 export default async function feedRoutes(app: FastifyInstance) {
@@ -37,22 +36,18 @@ export default async function feedRoutes(app: FastifyInstance) {
 
       // Get cached games from adapters
       console.log('Fetching games from adapters...');
-      const [steamGames, epicGames] = await Promise.all([
+      const [steamGames] = await Promise.all([
         steamAdapter.fetchTrending().catch((err: any) => {
           console.error('Steam adapter failed:', err);
-          return [];
-        }),
-        epicAdapter.fetchTrending().catch((err: any) => {
-          console.error('Epic adapter failed:', err);
           return [];
         })
       ]);
 
       // Combine and enrich game data
-      const allOffers = [...steamGames, ...epicGames];
+      const allOffers = [...steamGames];
       const allGames = allOffers.map(enrichGameData);
       
-      console.log(`Combined ${allGames.length} games from ${steamGames.length} Steam + ${epicGames.length} Epic`);
+      console.log(`Combined ${allGames.length} games from ${steamGames.length} Steam`);
 
       // Get served games for this user
       const servedGames = servedGamesTracker.getServedGames(feedParams.userId);

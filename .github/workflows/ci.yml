@@ -18,7 +18,5 @@ jobs:
       - run: npm test --if-present
       - run: npm run build
     env:
-      MONGODB_URI: ${{ secrets.MONGODB_URI }}
-      MONGODB_DBNAME: ${{ secrets.MONGODB_DBNAME }}
       REDIS_URL: ${{ secrets.REDIS_URL }}
       USE_MOCK_ADAPTERS: 'true'

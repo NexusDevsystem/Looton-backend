@@ -1,7 +1,33 @@
 import { FastifyInstance } from 'fastify'
+import { listFreeGames } from '../integrations/epic/freeGames.js'
 
 export default async function epicRoutes(app: FastifyInstance) {
-  // Endpoint para detalhes de jogos Epic
+  // Endpoint para jogos grátis da Epic Games
+  app.get('/epic/free', async (request, reply) => {
+    try {
+      // Extrair parâmetros de query
+      const { locale = 'pt-BR', country = 'BR', allowCountries = 'BR' } = request.query as {
+        locale?: string;
+        country?: string;
+        allowCountries?: string;
+      };
+
+      // Buscar os jogos grátis
+      const freeGames = await listFreeGames(locale, country, allowCountries);
+
+      // Retornar os jogos com cabeçalho indicando a fonte
+      reply.header('X-Data-Source', 'epic-freeGamesPromotions');
+      return reply.send(freeGames);
+    } catch (error) {
+      console.error('Error in Epic free games route:', error);
+      return reply.status(500).send({
+        error: 'Failed to fetch free games',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Endpoint para detalhes de jogos Epic (mantido para compatibilidade)
   app.get('/epic/details/:gameId', async (request, reply) => {
     try {
       const { gameId } = request.params as { gameId: string }

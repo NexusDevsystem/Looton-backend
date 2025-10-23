@@ -1,29 +1,86 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { NotificationRule } from '../db/models/NotificationRule.js'
-import { PriceWindow } from '../db/models/PriceWindow.js'
 import { evaluateAndPush } from '../services/notification.service.js'
+
+// Caches em memória para as regras de notificação e janelas de preço (sem MongoDB)
+const notificationRulesCache = new Map<string, any[]>()
+const priceWindowsCache = new Map<string, any[]>()
 
 export default async function notificationsRoutes(app: FastifyInstance) {
   app.post('/notification-rules', async (req: any, reply: any) => {
-    const schema = z.object({ userId: z.string().length(24), type: z.enum(['studio','franchise','game','store']), query: z.string().optional(), gameId: z.string().length(24).optional() })
+    const schema = z.object({ 
+      userId: z.string(), 
+      type: z.enum(['studio','franchise','game','store']), 
+      query: z.string().optional(), 
+      gameId: z.string().optional() 
+    })
     const body = schema.parse(req.body)
-    const r = await NotificationRule.create({ userId: body.userId, type: body.type, query: body.query, gameId: body.gameId })
-    return reply.code(201).send(r)
+    
+    // Gerar ID único para a regra
+    const ruleId = `rule_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+    
+    const rule = {
+      _id: ruleId,
+      userId: body.userId,
+      type: body.type,
+      query: body.query,
+      gameId: body.gameId,
+      createdAt: new Date()
+    }
+    
+    // Armazenar no cache
+    const userRules = notificationRulesCache.get(body.userId) || []
+    userRules.push(rule)
+    notificationRulesCache.set(body.userId, userRules)
+    
+    return reply.code(201).send(rule)
   })
 
   app.get('/notification-rules', async (req: any, reply: any) => {
-    const { userId } = z.object({ userId: z.string().length(24).optional() }).parse(req.query)
-    const q = userId ? { userId } : {}
-    const list = await NotificationRule.find(q).lean()
-    return reply.send(list)
+    const { userId } = z.object({ userId: z.string().optional() }).parse(req.query)
+    
+    let rules: any[] = []
+    if (userId) {
+      rules = notificationRulesCache.get(userId) || []
+    } else {
+      // Retornar todas as regras de todos os usuários (não recomendado em produção real)
+      for (const [, userRules] of notificationRulesCache.entries()) {
+        rules = [...rules, ...userRules]
+      }
+    }
+    
+    return reply.send(rules)
   })
 
   app.post('/price-windows', async (req: any, reply: any) => {
-    const schema = z.object({ userId: z.string().length(24), gameId: z.string().length(24).optional(), store: z.string().optional(), min: z.number().optional(), max: z.number().optional() })
+    const schema = z.object({ 
+      userId: z.string(), 
+      gameId: z.string().optional(), 
+      store: z.string().optional(), 
+      min: z.number().optional(), 
+      max: z.number().optional() 
+    })
     const body = schema.parse(req.body)
-    const pw = await PriceWindow.create({ userId: body.userId, gameId: body.gameId, store: body.store, min: body.min, max: body.max })
-    return reply.code(201).send(pw)
+    
+    // Gerar ID único para a janela de preço
+    const windowId = `window_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+    
+    const priceWindow = {
+      _id: windowId,
+      userId: body.userId,
+      gameId: body.gameId,
+      store: body.store,
+      min: body.min,
+      max: body.max,
+      createdAt: new Date()
+    }
+    
+    // Armazenar no cache
+    const userWindows = priceWindowsCache.get(body.userId) || []
+    userWindows.push(priceWindow)
+    priceWindowsCache.set(body.userId, userWindows)
+    
+    return reply.code(201).send(priceWindow)
   })
 
   // Admin/test endpoint to evaluate a deal and trigger pushes

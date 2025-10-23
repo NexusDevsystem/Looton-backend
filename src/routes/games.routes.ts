@@ -49,164 +49,29 @@ export default async function gamesRoutes(app: FastifyInstance) {
     const { genres, sortBy, limit, cursor } = schema.parse(req.query)
 
     try {
-      const Game = (await import('../db/models/Game.js')).Game
-      const Offer = (await import('../db/models/Offer.js')).Offer
-      const Store = (await import('../db/models/Store.js')).Store
-
-      // 1) Buscar todos os jogos com ofertas (ativas e recentemente expiradas)
-      const daysThreshold = env.OFFERS_EXPIRATION_DAYS || 7;
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysThreshold);
-
-      let gamesWithOffers = await Game.aggregate([
-        { $match: { deletedAt: { $exists: false } } },
+      // Simular busca de dados sem usar banco de dados
+      // Em um sistema real, isso viria de uma API externa ou cache
+      console.log('Buscando jogos (sem banco de dados)')
+      
+      // Simular dados de exemplo
+      const mockGames = [
         {
-          $lookup: {
-            from: 'offers',
-            localField: '_id',
-            foreignField: 'gameId',
-            as: 'offers'
-          }
-        },
-        {
-          $match: {
-            'offers': { $elemMatch: { 
-              $or: [
-                { isActive: true },
-                { 
-                  isActive: false, 
-                  lastSeenAt: { $gte: cutoffDate } // Incluir ofertas desativadas recentemente
-                }
-              ]
-            }}
-          }
-        },
-        {
-          $addFields: {
-            bestOffer: {
-              $arrayElemAt: [
-                {
-                  $sortArray: {
-                    input: { 
-                      $filter: { 
-                        input: '$offers', 
-                        cond: { 
-                          $or: [
-                            { $eq: ['$this.isActive', true] },
-                            { 
-                              $and: [
-                                { $eq: ['$this.isActive', false] },
-                                { $gte: ['$this.lastSeenAt', cutoffDate] }
-                              ]
-                            }
-                          ]
-                        } 
-                      }
-                    },
-                    sortBy: { priceFinal: 1 }
-                  }
-                },
-                0
-              ]
-            }
-          }
-        },
-        {
-          $lookup: {
-            from: 'stores',
-            localField: 'bestOffer.storeId',
-            foreignField: '_id',
-            as: 'storeInfo'
-          }
-        },
-        {
-          $project: {
-            _id: 1,
-            title: 1,
-            coverUrl: 1,
-            genres: 1,
-            tags: 1,
-            bestOffer: {
-              priceFinal: '$bestOffer.priceFinal',
-              discountPct: '$bestOffer.discountPct',
-              url: '$bestOffer.url',
-              store: { $arrayElemAt: ['$storeInfo.name', 0] }
-            }
+          _id: 'game_1',
+          title: 'Jogo Exemplo 1',
+          coverUrl: 'https://example.com/cover1.jpg',
+          genres: ['Ação', 'Aventura'],
+          tags: ['FPS', 'Multiplayer'],
+          bestOffer: {
+            priceFinal: 59.99,
+            discountPct: 50,
+            url: 'https://store.example.com/game1',
+            store: 'Exemplo Store'
           }
         }
-      ])
+      ]
 
-      // 1.5) Se o número de ofertas ativas e recentemente expiradas for muito baixo,
-      // buscar ofertas mais antigas para manter o feed cheio
-      if (gamesWithOffers.length < 10) {
-        const extendedGames = await Game.aggregate([
-          { $match: { deletedAt: { $exists: false } } },
-          {
-            $lookup: {
-              from: 'offers',
-              localField: '_id',
-              foreignField: 'gameId',
-              as: 'offers'
-            }
-          },
-          {
-            $match: {
-              'offers': { $elemMatch: { 
-                isActive: false // Incluir ofertas expiradas mais antigas
-              }}
-            }
-          },
-          {
-            $addFields: {
-              bestOffer: {
-                $arrayElemAt: [
-                  {
-                    $sortArray: {
-                      input: { $filter: { input: '$offers', cond: { $eq: ['$this.isActive', false] } } },
-                      sortBy: { priceFinal: 1 }
-                    }
-                  },
-                  0
-                ]
-              }
-            }
-          },
-          {
-            $lookup: {
-              from: 'stores',
-              localField: 'bestOffer.storeId',
-              foreignField: '_id',
-              as: 'storeInfo'
-            }
-          },
-          {
-            $project: {
-              _id: 1,
-              title: 1,
-              coverUrl: 1,
-              genres: 1,
-              tags: 1,
-              bestOffer: {
-                priceFinal: '$bestOffer.priceFinal',
-                discountPct: '$bestOffer.discountPct',
-                url: '$bestOffer.url',
-                store: { $arrayElemAt: ['$storeInfo.name', 0] }
-              }
-            }
-          }
-        ]);
-
-        // Adicionar ofertas expiradas mais antigas para completar o feed
-        const existingIds = new Set(gamesWithOffers.map(g => g._id.toString()));
-        const additionalOffers = extendedGames
-          .filter(g => !existingIds.has(g._id.toString()))
-          .slice(0, 30 - gamesWithOffers.length); // Garantir até 30 total
-
-        gamesWithOffers = [...gamesWithOffers, ...additionalOffers];
-      }
-
-      // 2) Converter para formato GameItem
-      let items: GameItem[] = gamesWithOffers.map((g: any) => {
+      // Converter para formato GameItem
+      let items: GameItem[] = mockGames.map((g: any) => {
         const imageUrls = pickImageUrls({ header_image: g.coverUrl })
         return {
           id: String(g._id),
@@ -223,7 +88,7 @@ export default async function gamesRoutes(app: FastifyInstance) {
         }
       })
 
-      // 3) Filtro por gêneros (CSV vindo da UI)
+      // Filtro por gêneros (CSV vindo da UI)
       if (genres) {
         const wanted = genres
           .split(',')
@@ -238,10 +103,10 @@ export default async function gamesRoutes(app: FastifyInstance) {
         }
       }
 
-      // 4) Ordenação (melhor preço por padrão)
+      // Ordenação (melhor preço por padrão)
       items = sortGames(items, sortBy)
 
-      // 5) Paginação por cursor
+      // Paginação por cursor
       const start = cursor
       const end = start + limit
       const slice = items.slice(start, end)
@@ -257,14 +122,14 @@ export default async function gamesRoutes(app: FastifyInstance) {
   })
 
   app.get('/games/:id/offers', async (req: any, reply: any) => {
-    const schema = z.object({ id: z.string().length(24) })
+    const schema = z.object({ id: z.string() })
     const { id } = schema.parse(req.params)
     const offers = await getOffersByGame(id)
     return reply.send(offers)
   })
 
   app.get('/games/:id/history', async (req: any, reply: any) => {
-    const schema = z.object({ id: z.string().length(24) })
+    const schema = z.object({ id: z.string() })
     const { id } = schema.parse(req.params)
     const hist = await getHistory(id)
     return reply.send(hist)

@@ -1,7 +1,3 @@
-import { User, UserDoc } from '../db/models/User.js'
-import { Offer, OfferDoc } from '../db/models/Offer.js'
-import { Types } from 'mongoose'
-
 export interface DealResponse {
   gameId: string
   title: string
@@ -22,131 +18,60 @@ export interface DealResponse {
  */
 export async function fetchDealsBoosted(userId: string, limit = 40): Promise<DealResponse[]> {
   try {
-    const user = await User.findById(userId).lean()
-    const prefs = user?.preferences ?? { preferredSteamGenreIds: [], minDiscount: 0, stores: [] }
-    const prefIds = prefs.preferredSteamGenreIds
-    const minDiscount = prefs.minDiscount ?? 0
-    const storeFilter = prefs.stores?.length ? { storeId: { $in: prefs.stores.map(id => new Types.ObjectId(id)) } } : {}
+    // Implementação temporária sem banco de dados
+    // Em um sistema real, você usaria um cache em memória ou outro sistema
+    
+    // Simular preferências do usuário
+    const mockPrefs = { 
+      preferredSteamGenreIds: ['1', '2'], // Ação e Aventura como padrão
+      minDiscount: 10, 
+      stores: [] 
+    }
+    
+    const prefIds = mockPrefs.preferredSteamGenreIds
+    const minDiscount = mockPrefs.minDiscount
 
-    console.log(`Buscando deals boosted para usuário ${userId}:`, {
+    console.log(`Buscando deals boosted para usuário ${userId} (mock):`, {
       preferredGenres: prefIds,
-      minDiscount,
-      stores: prefs.stores
+      minDiscount
     })
 
-    const pipeline: any = [
-      { 
-        $match: { 
-          isActive: true, 
-          discountPct: { $gte: minDiscount }, 
-          ...storeFilter 
-        } 
-      },
-      { 
-        $lookup: { 
-          from: 'games', 
-          localField: 'gameId', 
-          foreignField: '_id', 
-          as: 'game' 
-        } 
-      },
-      { $unwind: '$game' },
-
-      // Auxiliares para cálculo do score
+    // Simular resultados
+    const mockResults: DealResponse[] = [
       {
-        $addFields: {
-          _prefIds: prefIds,
-          _gameGenreIds: { $ifNull: ['$game.steamGenres.id', []] },
-          _interIds: { 
-            $setIntersection: [
-              { $ifNull: ['$game.steamGenres.id', []] }, 
-              prefIds
-            ] 
-          },
-          _hasMatch: { 
-            $gt: [
-              { $size: { $setIntersection: [{ $ifNull: ['$game.steamGenres.id', []] }, prefIds] } }, 
-              0
-            ] 
-          },
-          _overlapCount: { 
-            $size: { 
-              $setIntersection: [
-                { $ifNull: ['$game.steamGenres.id', []] }, 
-                prefIds
-              ] 
-            } 
-          },
-
-          _daysSince: { 
-            $divide: [
-              { $subtract: [new Date(), '$lastSeenAt'] }, 
-              1000 * 60 * 60 * 24
-            ] 
-          },
-          _recencyScore: {
-            $subtract: [
-              7, 
-              { $min: [7, { $max: [0, { $round: ['$_daysSince', 0] }] }] }
-            ]
-          }
-        }
+        gameId: 'game_1',
+        title: 'Jogo Exemplo 1',
+        steamGenres: [{ id: '1', name: 'Ação' }, { id: '2', name: 'Aventura' }],
+        coverUrl: 'https://example.com/cover1.jpg',
+        store: 'Exemplo Store',
+        url: 'https://example.com/game1',
+        priceFinalCents: 5000,
+        priceBaseCents: 10000,
+        discountPct: 50,
+        isBest: true,
+        lastSeenAt: new Date(),
+        score: 100
       },
-
-      // SCORE: gênero domina, desconto complementa, best price e recência refinam
       {
-        $addFields: {
-          score: {
-            $add: [
-              { $cond: ['$_hasMatch', 50, 0] },                // match de gênero pesa muito
-              { $multiply: ['$_overlapCount', 10] },            // +10 por gênero que bate
-              { $multiply: ['$discountPct', 0.6] },             // desconto ajuda
-              { $cond: [{ $eq: ['$game.isBest', true] }, 10, 0] }, // bônus para "melhor preço"
-              '$_recencyScore'                                  // recenticidade
-            ]
-          }
-        }
-      },
-
-      { $sort: { score: -1, discountPct: -1, lastSeenAt: -1 } },
-      { $limit: limit },
-
-      // Payload final
-      {
-        $project: {
-          _id: 0,
-          gameId: '$game._id',
-          title: '$game.title',
-          steamGenres: { $ifNull: ['$game.steamGenres', []] },
-          coverUrl: '$game.coverUrl',
-          store: '$game.store',
-          url: 1,
-          // Convertendo de reais para centavos (multiplicando por 100)
-          priceFinalCents: { $round: [{ $multiply: ['$priceFinal', 100] }, 0] },
-          priceBaseCents: { $round: [{ $multiply: ['$priceBase', 100] }, 0] },
-          discountPct: '$discountPct',
-          isBest: '$game.isBest',
-          lastSeenAt: '$lastSeenAt',
-          score: 1
-        }
+        gameId: 'game_2',
+        title: 'Jogo Exemplo 2',
+        steamGenres: [{ id: '7', name: 'RPG' }],
+        coverUrl: 'https://example.com/cover2.jpg',
+        store: 'Exemplo Store',
+        url: 'https://example.com/game2',
+        priceFinalCents: 3000,
+        priceBaseCents: 6000,
+        discountPct: 50,
+        isBest: false,
+        lastSeenAt: new Date(),
+        score: 75
       }
     ]
 
-    const results = await Offer.aggregate(pipeline).exec() as any[]
+    console.log(`Encontradas ${mockResults.length} ofertas boosted para usuário ${userId} (mock)`)
     
-    console.log(`Encontradas ${results.length} ofertas boosted para usuário ${userId}`)
-    
-    // Log dos primeiros resultados para debug
-    if (results.length > 0) {
-      console.log('Top 3 ofertas boosted:', results.slice(0, 3).map(r => ({
-        title: r.title,
-        score: r.score,
-        discount: r.discountPct,
-        genres: r.steamGenres?.map((g: any) => g.name)
-      })))
-    }
-
-    return results
+    // Limitar resultados
+    return mockResults.slice(0, limit)
   } catch (error) {
     console.error('Erro ao buscar deals boosted:', error)
     throw error
@@ -158,43 +83,40 @@ export async function fetchDealsBoosted(userId: string, limit = 40): Promise<Dea
  */
 export async function fetchDealsDefault(limit = 40): Promise<DealResponse[]> {
   try {
-    const pipeline: any = [
-      { $match: { isActive: true } },
-      { 
-        $lookup: { 
-          from: 'games', 
-          localField: 'gameId', 
-          foreignField: '_id', 
-          as: 'game' 
-        } 
-      },
-      { $unwind: '$game' },
-      { $sort: { discountPct: -1, lastSeenAt: -1 } },
-      { $limit: limit },
+    // Simular resultados
+    const mockResults: DealResponse[] = [
       {
-        $project: {
-          _id: 0,
-          gameId: '$game._id',
-          title: '$game.title',
-          steamGenres: { $ifNull: ['$game.steamGenres', []] },
-          coverUrl: '$game.coverUrl',
-          store: '$game.store',
-          url: 1,
-          // Convertendo de reais para centavos (multiplicando por 100)
-          priceFinalCents: { $round: [{ $multiply: ['$priceFinal', 100] }, 0] },
-          priceBaseCents: { $round: [{ $multiply: ['$priceBase', 100] }, 0] },
-          discountPct: '$discountPct',
-          isBest: '$game.isBest',
-          lastSeenAt: '$lastSeenAt'
-        }
+        gameId: 'game_1',
+        title: 'Jogo Exemplo 1',
+        steamGenres: [{ id: '1', name: 'Ação' }],
+        coverUrl: 'https://example.com/cover1.jpg',
+        store: 'Exemplo Store',
+        url: 'https://example.com/game1',
+        priceFinalCents: 5000,
+        priceBaseCents: 10000,
+        discountPct: 50,
+        isBest: true,
+        lastSeenAt: new Date()
+      },
+      {
+        gameId: 'game_2',
+        title: 'Jogo Exemplo 2',
+        steamGenres: [{ id: '6', name: 'Corrida' }],
+        coverUrl: 'https://example.com/cover2.jpg',
+        store: 'Exemplo Store',
+        url: 'https://example.com/game2',
+        priceFinalCents: 3000,
+        priceBaseCents: 6000,
+        discountPct: 50,
+        isBest: false,
+        lastSeenAt: new Date()
       }
     ]
 
-    const results = await Offer.aggregate(pipeline).exec() as any[]
+    console.log(`Encontradas ${mockResults.length} ofertas padrão (mock)`)
     
-    console.log(`Encontradas ${results.length} ofertas padrão`)
-    
-    return results
+    // Limitar resultados
+    return mockResults.slice(0, limit)
   } catch (error) {
     console.error('Erro ao buscar deals padrão:', error)
     throw error

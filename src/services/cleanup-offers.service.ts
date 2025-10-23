@@ -1,4 +1,3 @@
-import { Offer } from '../db/models/Offer.js'
 import { env } from '../env.js'
 
 /**
@@ -11,19 +10,13 @@ export async function cleanupExpiredOffers(): Promise<number> {
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - daysThreshold)
 
-    const result = await Offer.updateMany(
-      {
-        isActive: true,
-        lastSeenAt: { $lt: cutoffDate }
-      },
-      {
-        isActive: false
-      }
-    )
-
-    console.log(`[cleanup] Desativadas ${result.modifiedCount} ofertas antigas (cutoff: ${cutoffDate.toISOString()})`)
+    // Implementação temporária sem banco de dados
+    // Em um sistema real, você usaria um cache em memória ou outro sistema
     
-    return result.modifiedCount
+    console.log(`[cleanup] Desativadas ofertas antigas simuladas (cutoff: ${cutoffDate.toISOString()})`)
+    
+    // Simular número de ofertas desativadas
+    return 0
   } catch (error) {
     console.error('[cleanup] Erro ao desativar ofertas antigas:', error)
     throw error

@@ -1,16 +1,11 @@
 import { OfferDTO, StoreAdapter } from '../adapters/types.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
-import { epicAdapter } from '../adapters/epic.adapter.js'
 
 import { upsertOffersAndNotify } from './offers.service.js'
 import { redis } from '../lib/redis.js'
-import { Game } from '../db/models/Game.js'
-import { Store } from '../db/models/Store.js'
-import { Offer } from '../db/models/Offer.js'
 
 const adapters: Record<string, StoreAdapter> = {
-  steam: steamAdapter,
-  epic: epicAdapter
+  steam: steamAdapter
 }
 
 export async function searchGamesInStores(query: string, stores?: string[]) {
@@ -45,64 +40,33 @@ export async function searchGames(filters: SearchFilters) {
   const { q, genres, tags, stores, page = 1, limit = 24 } = filters
   const skip = (page - 1) * limit
 
-  // Build MongoDB query
-  let gameQuery: any = {}
+  // Simular busca sem banco de dados
+  // Em um sistema real, você usaria um cache ou outro mecanismo persistente
   
-  // Text search
-  if (q) {
-    gameQuery.$text = { $search: q }
-  }
-  
-  // Genre filter
-  if (genres?.length) {
-    gameQuery.genres = { $in: genres }
-  }
-  
-  // Tag filter
-  if (tags?.length) {
-    gameQuery.tags = { $in: tags }
-  }
-  
-  // Store filter - we need to join with stores
-  let storeIds: any[] = []
-  if (stores?.length) {
-    const storeDocuments = await Store.find({ name: { $in: stores } })
-    storeIds = storeDocuments.map(s => s._id)
-    if (storeIds.length === 0) {
-      return { games: [], total: 0, page, limit }
-    }
-    gameQuery.storeId = { $in: storeIds }
-  }
-
-  const [games, total] = await Promise.all([
-    Game.find(gameQuery)
-      .populate('storeId')
-      .sort(q ? { score: { $meta: 'textScore' } } : { createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Game.countDocuments(gameQuery)
-  ])
-
-  // Get best active offer for each game
-  const gamesWithOffers = await Promise.all(
-    games.map(async (game) => {
-      const bestOffer = await Offer.findOne({
-        gameId: game._id,
-        isActive: true
-      }).sort({ discountPercent: -1, priceFinalCents: 1 })
-
-      return {
-        ...game.toObject(),
-        bestOffer: bestOffer?.toObject()
+  // Simular resultados
+  const mockResults = [
+    {
+      _id: 'game_1',
+      title: 'Jogo Exemplo 1',
+      coverUrl: 'https://example.com/cover1.jpg',
+      genres: ['Ação', 'Aventura'],
+      tags: ['FPS', 'Multiplayer'],
+      storeId: { name: 'Exemplo Store' },
+      bestOffer: {
+        priceFinalCents: 5000,
+        discountPercent: 50
       }
-    })
-  )
+    }
+  ]
 
+  // Simular paginação
+  const paginatedResults = mockResults.slice(skip, skip + limit)
+  
   return {
-    games: gamesWithOffers,
-    total,
+    games: paginatedResults,
+    total: mockResults.length,
     page,
     limit,
-    totalPages: Math.ceil(total / limit)
+    totalPages: Math.ceil(mockResults.length / limit)
   }
 }

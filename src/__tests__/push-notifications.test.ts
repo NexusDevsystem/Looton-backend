@@ -1,6 +1,4 @@
 import { expect, describe, it } from 'vitest'
-import { Types } from 'mongoose'
-import { User } from '../db/models/User.js'
 import { sendPush } from '../services/notification.service.js'
 import { registerUser } from '../services/alerts.service.js'
 
@@ -9,7 +7,7 @@ describe('Push Notifications Integration', () => {
     const email = 'test@example.com'
     const pushToken = 'ExponentPushToken[test-token-123]'
     
-    // Note: This test would require a real DB connection
+    // Note: This test would require a real implementation
     // For now, we're just testing that the function exists and can be called
     expect(registerUser).toBeInstanceOf(Function)
   })

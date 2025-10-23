@@ -51,9 +51,10 @@ export default async function debugRoutes(app: FastifyInstance) {
   // Endpoint para popular gêneros Steam nos jogos existentes
   app.post('/debug/populate-genres', async (request, reply) => {
     try {
-      const { Game } = await import('../db/models/Game.js')
+      // Implementação temporária sem banco de dados
+      // Em um sistema real, você usaria um cache em memória ou outro sistema
       
-      // Mapear jogos por steamAppId para seus gêneros
+      // Simular mapeamento de gêneros
       const gameGenresMap: Record<string, Array<{ id: string; name: string }>> = {
         '730': [{ id: '1', name: 'Ação' }, { id: '13', name: 'Luta' }],
         '292030': [{ id: '7', name: 'RPG' }, { id: '2', name: 'Aventura' }],
@@ -64,7 +65,7 @@ export default async function debugRoutes(app: FastifyInstance) {
         '1203220': [{ id: '1', name: 'Ação' }, { id: '2', name: 'Aventura' }]
       }
       
-      // Também buscar por títulos para garantir que peguemos todos os jogos
+      // Também simular busca por títulos
       const gameTitleGenresMap: Record<string, Array<{ id: string; name: string }>> = {
         'Forza Horizon 5': [{ id: '6', name: 'Corrida' }, { id: '9', name: 'Esportes' }],
         'Counter-Strike 2': [{ id: '1', name: 'Ação' }, { id: '13', name: 'Luta' }],
@@ -75,42 +76,12 @@ export default async function debugRoutes(app: FastifyInstance) {
         'Naraka: Bladepoint': [{ id: '1', name: 'Ação' }, { id: '2', name: 'Aventura' }]
       }
       
-      let updated = 0
-      
-      // Atualizar cada jogo com seus gêneros Steam por steamAppId
-      for (const [steamAppId, steamGenres] of Object.entries(gameGenresMap)) {
-        const result = await Game.updateMany(
-          {
-            $or: [
-              { steamAppId: parseInt(steamAppId) },
-              { storeAppId: steamAppId }
-            ]
-          },
-          {
-            $set: { steamGenres }
-          }
-        )
-        updated += result.modifiedCount
-        console.log(`Atualizado ${result.modifiedCount} jogos para steamAppId ${steamAppId}`)
-      }
-      
-      // Atualizar jogos por título também (fallback)
-      for (const [title, steamGenres] of Object.entries(gameTitleGenresMap)) {
-        const result = await Game.updateMany(
-          {
-            title: { $regex: title, $options: 'i' }
-          },
-          {
-            $set: { steamGenres }
-          }
-        )
-        updated += result.modifiedCount
-        console.log(`Atualizado ${result.modifiedCount} jogos para título ${title}`)
-      }
+      // Simular atualização
+      const updated = Object.keys(gameGenresMap).length + Object.keys(gameTitleGenresMap).length
       
       return reply.send({ 
         ok: true, 
-        message: `${updated} jogos atualizados com gêneros Steam`,
+        message: `${updated} jogos simulados com gêneros Steam`,
         updated 
       })
       
@@ -123,23 +94,19 @@ export default async function debugRoutes(app: FastifyInstance) {
   // Endpoint para criar usuário de teste com preferências
   app.post('/debug/create-test-user', async (request, reply) => {
     try {
-      const { User } = await import('../db/models/User.js')
       const body = request.body as { preferences?: { preferredSteamGenreIds: string[] } }
       
-      // Criar ou atualizar usuário de teste
-      const testUser = await User.findOneAndUpdate(
-        { email: 'test@looton.app' },
-        {
-          email: 'test@looton.app',
-          name: 'Test User',
-          preferences: body.preferences || {
-            preferredSteamGenreIds: ['6'], // Corrida como padrão
-            minDiscount: 0,
-            stores: []
-          }
-        },
-        { upsert: true, new: true }
-      )
+      // Simular criação/atualização de usuário de teste
+      const testUser = {
+        _id: 'test_user_123',
+        email: 'test@looton.app',
+        name: 'Test User',
+        preferences: body.preferences || {
+          preferredSteamGenreIds: ['6'], // Corrida como padrão
+          minDiscount: 0,
+          stores: []
+        }
+      }
       
       return reply.send({ 
         ok: true, 
@@ -184,4 +151,3 @@ export default async function debugRoutes(app: FastifyInstance) {
 }
 
 export { debugPushTokens }
-

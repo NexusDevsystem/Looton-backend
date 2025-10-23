@@ -12,14 +12,15 @@ export default async function dealsRoutes(app: FastifyInstance) {
       boost: z.string().optional(), // Parâmetro para preferências de gênero
       cc: z.string().length(2).optional(),
       l: z.string().optional(),
+      useDailyRotation: z.coerce.boolean().optional(), // Parâmetro para controlar rotação diária
     })
-    const { limit, boost, cc, l } = schema.parse(req.query)
+    const { limit, boost, cc, l, useDailyRotation } = schema.parse(req.query)
     
     try {
       console.log('🎮 Buscando deals com preços ao vivo da Steam...')
       
       // Usar serviço consolidado que já busca preços atuais
-      let deals = await fetchConsolidatedDeals(limit || 30, { cc, l })
+      let deals = await fetchConsolidatedDeals(limit || 30, { cc, l, useDailyRotation }) // Passar o parâmetro useDailyRotation
       
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       
@@ -64,7 +65,7 @@ export default async function dealsRoutes(app: FastifyInstance) {
         
         return {
           _id: uniqueId,
-          appId: parseInt(appId) || Math.floor(Math.random() * 999999),
+          appId: isNaN(Number(appId)) ? appId : parseInt(appId), // Manter como string se não for número
           url: bestStore.url,
           priceBaseCents,
           priceFinalCents,
@@ -73,6 +74,7 @@ export default async function dealsRoutes(app: FastifyInstance) {
           discountPct: bestStore.discountPct || 0,
           currency: deal.currency || 'BRL',
           steamGenres: mockGenres,
+          releaseDate: deal.releaseDate, // Adicionando a data de lançamento
           imageUrls: deal.coverUrl ? [`/thumb?url=${encodeURIComponent(deal.coverUrl)}&w=640`] : [],
           image: deal.coverUrl ? `/thumb?url=${encodeURIComponent(deal.coverUrl)}&w=640` : '',
           game: {
@@ -131,18 +133,19 @@ export default async function dealsRoutes(app: FastifyInstance) {
   // GET /deals/consolidated - Ofertas consolidadas de múltiplas lojas
   app.get('/deals/consolidated', async (req: any, reply: any) => {
     const schema = z.object({
-      limit: z.coerce.number().min(1).max(100).default(50)
+      limit: z.coerce.number().min(1).max(100).default(50),
+      useDailyRotation: z.coerce.boolean().optional(), // Parâmetro para controlar rotação diária
     })
     
-    const { limit } = schema.parse(req.query)
+    const { limit, useDailyRotation } = schema.parse(req.query)
     
     try {
-  const consolidatedDeals = await fetchConsolidatedDeals(limit)
+  const consolidatedDeals = await fetchConsolidatedDeals(limit, { useDailyRotation }) // Passar o parâmetro useDailyRotation
       
       // Converter para formato compatível com o frontend
       const formattedDeals = consolidatedDeals.map(deal => ({
         _id: deal.id,
-        appId: deal.stores[0]?.storeAppId || deal.id,
+        appId: isNaN(Number(deal.stores[0]?.storeAppId)) ? deal.stores[0]?.storeAppId || deal.id : parseInt(deal.stores[0]?.storeAppId),
         title: deal.title,
         url: deal.stores[0]?.url || '#',
         coverUrl: deal.coverUrl,

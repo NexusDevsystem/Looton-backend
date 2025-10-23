@@ -226,8 +226,11 @@ export async function fetchSteamFeatured(): Promise<SteamFeaturedItem[]> {
           const titleLower = (steamItem.title || '').toLowerCase()
           const isDoomByTitle = titleLower === 'doom eternal standard edition'
           const isDoomById = id === 235874 || item.id === 235874 || item.packageid === 235874 || item.bundleid === 235874
+          
+          // Exclude Assassin's Creed Black Flag - Golden Edition which doesn't exist on Steam
+          const isAssassinBlackFlagGolden = titleLower.includes('assassin\'s creed black flag') && titleLower.includes('golden edition')
 
-          if (isDoomByTitle || isDoomById) {
+          if (isDoomByTitle || isDoomById || isAssassinBlackFlagGolden) {
             // skip adding this item
           } else {
             items.push(steamItem)

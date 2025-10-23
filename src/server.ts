@@ -3,7 +3,7 @@ import { env } from './env.js'
 
 async function main() {
   // No database connection - using live APIs only as requested
-  const app = buildApp()
+  const app = await buildApp()
   // Temporarily disable curation jobs to prevent rate limiting issues
   // if (env.NODE_ENV !== 'test') {
   //   await startJobs()

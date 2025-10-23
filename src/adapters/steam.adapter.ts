@@ -38,23 +38,29 @@ export const steamAdapter: StoreAdapter = {
         // Filtrar apenas itens com desconto (> 0) e preço válido
         if (!(discount > 0 && initial > 0 && final >= 0)) continue
 
-        const offer: OfferDTO = {
-          store: 'steam',
-          storeAppId: String(it.id),
-          title: it.name,
-          url: `https://store.steampowered.com/app/${it.id}/`,
-          priceBase: Math.round(initial) / 100,
-          priceFinal: Math.round(final) / 100,
-          priceBaseCents: Math.round(initial),
-          priceFinalCents: Math.round(final),
-          discountPct: Math.max(0, Math.min(100, Math.round(discount))),
-          currency: 'BRL',
-          isActive: true,
-          coverUrl: it.header_image || '',
-          genres: [],
-          tags: []
+        // Exclude Assassin's Creed Black Flag - Golden Edition which doesn't exist on Steam
+        const titleLower = it.name.toLowerCase();
+        const isAssassinBlackFlagGolden = titleLower.includes('assassin\'s creed black flag') && titleLower.includes('golden edition');
+        
+        if (!isAssassinBlackFlagGolden) {
+          const offer: OfferDTO = {
+            store: 'steam',
+            storeAppId: String(it.id),
+            title: it.name,
+            url: `https://store.steampowered.com/app/${it.id}/`,
+            priceBase: Math.round(initial) / 100,
+            priceFinal: Math.round(final) / 100,
+            priceBaseCents: Math.round(initial),
+            priceFinalCents: Math.round(final),
+            discountPct: Math.max(0, Math.min(100, Math.round(discount))),
+            currency: 'BRL',
+            isActive: true,
+            coverUrl: it.header_image || '',
+            genres: [],
+            tags: []
+          }
+          offers.push(offer)
         }
-        offers.push(offer)
       }
 
       // Ordenar: maior desconto primeiro, depois menor preço
@@ -119,25 +125,31 @@ export const steamAdapter: StoreAdapter = {
             continue
           }
           
-          const offer: OfferDTO = {
-            store: 'steam',
-            storeAppId: String(item.id),
-            title: item.name,
-            url: 'https://store.steampowered.com/app/' + item.id + '/',
-            priceBase,
-            priceFinal,
-            priceBaseCents: Math.round(priceBase * 100),
-            priceFinalCents: Math.round(priceFinal * 100),
-            discountPct,
-            currency: 'BRL',
-            isActive: true,
-            coverUrl: gameData.data.header_image || item.tiny_image || '',
-            genres: [],
-            tags: []
-          }
+          // Exclude Assassin's Creed Black Flag - Golden Edition which doesn't exist on Steam
+          const titleLower = item.name.toLowerCase();
+          const isAssassinBlackFlagGolden = titleLower.includes('assassin\'s creed black flag') && titleLower.includes('golden edition');
           
-          offers.push(offer)
-          console.log(`✅ Encontrado: ${offer.title} - R$${offer.priceFinal}`)
+          if (!isAssassinBlackFlagGolden) {
+            const offer: OfferDTO = {
+              store: 'steam',
+              storeAppId: String(item.id),
+              title: item.name,
+              url: 'https://store.steampowered.com/app/' + item.id + '/',
+              priceBase,
+              priceFinal,
+              priceBaseCents: Math.round(priceBase * 100),
+              priceFinalCents: Math.round(priceFinal * 100),
+              discountPct,
+              currency: 'BRL',
+              isActive: true,
+              coverUrl: gameData.data.header_image || item.tiny_image || '',
+              genres: [],
+              tags: []
+            }
+            
+            offers.push(offer)
+            console.log(`✅ Encontrado: ${offer.title} - R${offer.priceFinal}`)
+          }
         } catch (err) {
           console.warn(`Erro ao processar ${item.name}:`, err)
         }

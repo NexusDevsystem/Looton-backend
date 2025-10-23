@@ -1,13 +1,8 @@
-import { Types } from 'mongoose'
-import { Favorite } from '../db/models/Favorite.js'
-import { Offer } from '../db/models/Offer.js'
-import { PriceHistory } from '../db/models/PriceHistory.js'
-
 // Lightweight in-process lock to prevent duplicate concurrent processing per gameId
 const processingLock = new Set<string>()
 
 export interface NotificationData {
-  favoriteId: Types.ObjectId
+  favoriteId: string
   gameTitle: string
   oldPrice: number
   newPrice: number
@@ -17,7 +12,7 @@ export interface NotificationData {
 }
 
 // Função para verificar se deve notificar sobre mudança de preço
-export async function checkFavoritesAndNotify(gameId: Types.ObjectId, offer: any) {
+export async function checkFavoritesAndNotify(gameId: string, offer: any) {
   // Simple in-process processing lock to avoid duplicate processing in short windows
   // (prevents double notifications if the same job triggers quickly). For cross-process
   // locking use Redis/queue locks; this is a lightweight safeguard.
@@ -27,92 +22,9 @@ export async function checkFavoritesAndNotify(gameId: Types.ObjectId, offer: any
   // release lock after short delay to allow subsequent updates
   setTimeout(() => processingLock.delete(key), 5 * 1000)
 
-  // Buscar todos os favoritos para este jogo
-  const favorites = await Favorite.find({ gameId })
-    .populate('gameId')
-    .populate({
-      path: 'gameId',
-      populate: {
-        path: 'storeId',
-        model: 'Store'
-      }
-    })
-
-  if (favorites.length === 0) return
-
-  // Buscar ofertas anteriores para comparação
-  const previousOffer = await Offer.findOne({
-    gameId,
-    storeId: offer.storeId,
-    isActive: false
-  }).sort({ createdAt: -1 })
-
-  if (!previousOffer) return
-
-  const oldPrice = toCents(previousOffer.priceFinal)
-  const newPrice = toCents(offer.priceFinal)
-  const priceChange = oldPrice > 0 ? ((newPrice - oldPrice) / oldPrice) * 100 : 0
-
-  // Verificar se é o menor preço em 90 dias
-  const ninetyDaysAgo = new Date()
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
-  
-  const lowestIn90Days = await PriceHistory.findOne({
-    gameId,
-    seenAt: { $gte: ninetyDaysAgo }
-  }).sort({ priceFinalCents: 1 })
-
-  const isNewLowest90d = !lowestIn90Days || newPrice < (lowestIn90Days.priceFinal * 100)
-
-    // derive a store key: prefer offer.storeKey/offer.store if present, else use storeId string
-    const storeKey = offer.storeKey || offer.store || String(offer.storeId)
-
-    for (const favorite of favorites) {
-      // If favorite specifies stores, only notify for matching store
-      if (!matchesStore(favorite, storeKey)) continue
-
-      // If user set an absolute desired price (in cents), notify when newPrice <= desiredPriceCents (respect cooldown)
-      const desiredTrigger = shouldTriggerDesiredPrice(favorite, newPrice)
-
-      let shouldNotify = false
-      let notificationType: NotificationData['type'] = 'price_drop'
-
-      if (desiredTrigger) {
-        if (!isInCooldown(favorite)) {
-          shouldNotify = true
-          notificationType = 'price_drop'
-        }
-      } else {
-        // fallback to existing threshold/lowest logic
-        const should = await shouldSendNotification(favorite, priceChange, isNewLowest90d)
-        if (should) {
-          shouldNotify = true
-          notificationType = getNotificationType(priceChange, isNewLowest90d, favorite)
-        }
-      }
-
-      if (shouldNotify) {
-        // send notification (catch errors to avoid failing the entire loop)
-        try {
-          await sendNotification({
-            favoriteId: favorite._id,
-            gameTitle: (favorite.gameId as any).title,
-            oldPrice: oldPrice / 100,
-            newPrice: newPrice / 100,
-            discountPct: offer.discountPct,
-            storeName: (favorite.gameId as any).storeId?.name || storeKey,
-            type: notificationType,
-            ...(desiredTrigger && { desiredPrice: (favorite.desiredPriceCents || 0) / 100 })
-          })
-
-          // Atualizar timestamp da última notificação
-          favorite.lastNotifiedAt = new Date()
-          await favorite.save()
-        } catch (err) {
-          console.error('Error sending notification or saving favorite:', err)
-        }
-      }
-    }
+  // Implementação temporária sem banco de dados
+  // Em um sistema real, você usaria um cache em memória ou outro sistema
+  console.log(`Check favorites and notify for game ${gameId}`)
 }
 
 export function shouldTriggerDesiredPrice(favorite: any, newPriceCents: number) {
@@ -224,22 +136,9 @@ async function sendNotification(data: NotificationData) {
 }
 
 // Função para verificar debounce (2 coletas consecutivas)
-export async function verifyPriceChangeDebounce(gameId: Types.ObjectId, storeId: Types.ObjectId): Promise<boolean> {
-  // Buscar as duas últimas ofertas para verificar consistência
-  const lastTwoOffers = await Offer.find({
-    gameId,
-    storeId,
-    isActive: false
-  })
-    .sort({ createdAt: -1 })
-    .limit(2)
-
-  if (lastTwoOffers.length < 2) return true
-
-  const [latest, previous] = lastTwoOffers
-  
-  // Verificar se o preço mudou de forma consistente
-  const priceStable = Math.abs((latest.priceFinal * 100) - (previous.priceFinal * 100)) < 10 // 10 centavos de tolerância
-  
-  return priceStable
+export async function verifyPriceChangeDebounce(gameId: string, storeId: string): Promise<boolean> {
+  // Implementação temporária sem banco de dados
+  // Em um sistema real, você usaria um cache em memória ou outro sistema
+  console.log(`Verify price change debounce for game ${gameId} and store ${storeId}`)
+  return true
 }

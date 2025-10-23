@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { Game } from '../db/models/Game.js'
 
 interface SteamGenre {
   id: string
@@ -79,17 +78,11 @@ export async function upsertGameGenresFromSteam(appId: number): Promise<void> {
 
     const genreSlugs = toGenreSlugs(steamGenres)
 
-    await Game.updateOne(
-      { steamAppId: appId },
-      { 
-        $set: { 
-          steamGenres,
-          genreSlugs
-        }
-      }
-    )
+    // Implementação temporária sem banco de dados
+    // Em um sistema real, você usaria um cache em memória ou outro sistema
+    console.log(`Gêneros a serem atualizados para Steam appId ${appId}: ${steamGenres.map(g => g.name).join(', ')}`)
 
-    console.log(`Gêneros atualizados para Steam appId ${appId}: ${steamGenres.map(g => g.name).join(', ')}`)
+    console.log(`Gêneros atualizados para Steam appId ${appId}: ${steamGenres.map(g => g.name).join(', ')} (mock)`)
 
   } catch (error) {
     console.error(`Erro ao atualizar gêneros para Steam appId ${appId}:`, error)
@@ -125,26 +118,20 @@ export async function batchUpdateSteamGenres(appIds: number[], batchSize = 10, d
  */
 export async function getAvailableSteamGenres(): Promise<{ id: string; name: string }[]> {
   try {
-    const result = await Game.aggregate([
-      { $match: { steamGenres: { $exists: true, $not: { $size: 0 } } } },
-      { $unwind: '$steamGenres' },
-      { 
-        $group: { 
-          _id: '$steamGenres.id', 
-          name: { $first: '$steamGenres.name' } 
-        } 
-      },
-      { 
-        $project: { 
-          _id: 0, 
-          id: '$_id', 
-          name: 1 
-        } 
-      },
-      { $sort: { name: 1 } }
-    ])
+    // Implementação temporária sem banco de dados
+    // Em um sistema real, você usaria um cache em memória ou outro sistema
+    
+    // Simular resultados
+    const mockGenres = [
+      { id: '1', name: 'Ação' },
+      { id: '2', name: 'Aventura' },
+      { id: '3', name: 'Indie' },
+      { id: '4', name: 'RPG' },
+      { id: '5', name: 'Simulação' },
+      { id: '6', name: 'Estratégia' }
+    ]
 
-    return result
+    return mockGenres
   } catch (error) {
     console.error('Erro ao buscar gêneros Steam disponíveis:', error)
     return []

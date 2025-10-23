@@ -1,8 +1,9 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { Types } from 'mongoose'
-import { List } from '../db/models/List.js'
-import { ListItem } from '../db/models/ListItem.js'
+
+// Cache em memória para listas (sem MongoDB)
+const listsCache = new Map<string, any[]>()
+const listItemsCache = new Map<string, any[]>()
 
 export default async function listsRoutes(app: FastifyInstance) {
   // POST /lists - Criar lista
@@ -16,22 +17,29 @@ export default async function listsRoutes(app: FastifyInstance) {
     try {
       const data = schema.parse(req.body)
       
-      const listPayload: any = { name: data.name }
-      if (data.userId && Types.ObjectId.isValid(data.userId)) {
-        listPayload.userId = new Types.ObjectId(data.userId)
+      // Gerar ID único para a lista
+      const listId = `list_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+      
+      const listPayload: any = { 
+        _id: listId,
+        name: data.name,
+        createdAt: new Date()
+      }
+      
+      if (data.userId) {
+        listPayload.userId = data.userId
       } else {
         // public list (no user)
         listPayload.userId = null
       }
 
-      const list = new List(listPayload)
+      // Armazenar no cache
+      const userLists = listsCache.get(data.userId || 'public') || []
+      userLists.push(listPayload)
+      listsCache.set(data.userId || 'public', userLists)
 
-      await list.save()
-      return reply.status(201).send(list)
+      return reply.status(201).send(listPayload)
     } catch (error: any) {
-      if (error.code === 11000) {
-        return reply.status(409).send({ error: 'Já existe uma lista com este nome' })
-      }
       return reply.status(400).send({ error: error.message })
     }
   })
@@ -43,43 +51,26 @@ export default async function listsRoutes(app: FastifyInstance) {
       const schema = z.object({ userId: z.string().optional() })
       const { userId } = schema.parse(req.query)
 
-      let query: any = { userId: null }
-      if (userId && Types.ObjectId.isValid(userId)) {
-        // user's own lists + public lists
-        query = { $or: [{ userId: new Types.ObjectId(userId) }, { userId: null }] }
+      let allLists: any[] = []
+
+      // Adicionar listas públicas
+      const publicLists = listsCache.get('public') || []
+      allLists = [...publicLists]
+
+      // Se userId foi fornecido, adicionar listas do usuário
+      if (userId) {
+        const userLists = listsCache.get(userId) || []
+        allLists = [...allLists, ...userLists]
       }
 
-      // Adicionar timeout maior e fallback
-      const lists = await List.find(query)
-        .sort({ createdAt: -1 })
-        .maxTimeMS(5000)
-        .lean() // Use lean para melhor performance
-
-      // Se não conseguir buscar listas, retornar array vazio ao invés de erro
-      if (!lists) {
-        console.warn('MongoDB timeout - retornando lista vazia')
-        return reply.send([])
-      }
-
-      // Get item count para cada lista com timeout
-      const listsWithCount = await Promise.all(
-        lists.map(async (list) => {
-          try {
-            const itemCount = await ListItem.countDocuments({ listId: list._id })
-              .maxTimeMS(2000)
-            return {
-              ...list,
-              itemCount
-            }
-          } catch (error) {
-            console.warn(`Erro ao contar items da lista ${list._id}:`, error)
-            return {
-              ...list,
-              itemCount: 0 // Fallback
-            }
-          }
-        })
-      )
+      // Contar itens de cada lista
+      const listsWithCount = allLists.map(list => {
+        const items = listItemsCache.get(list._id) || []
+        return {
+          ...list,
+          itemCount: items.length
+        }
+      })
 
       return reply.send(listsWithCount)
     } catch (error: any) {
@@ -92,15 +83,11 @@ export default async function listsRoutes(app: FastifyInstance) {
   // POST /lists/:listId/items - Adicionar jogo à lista
   app.post('/lists/:listId/items', async (req: any, reply: any) => {
     const paramsSchema = z.object({
-      listId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'listId deve ser um ObjectId válido'
-      })
+      listId: z.string()
     })
 
     const bodySchema = z.object({
-      gameId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'gameId deve ser um ObjectId válido'
-      }),
+      gameId: z.string(),
       notes: z.string().max(500).optional(),
       sortIndex: z.number().optional()
     })
@@ -109,35 +96,49 @@ export default async function listsRoutes(app: FastifyInstance) {
       const { listId } = paramsSchema.parse(req.params)
       const data = bodySchema.parse(req.body)
       
-      // Verify list exists
-      const list = await List.findById(listId)
-      if (!list) {
+      // Verificar se a lista existe
+      let listExists = false
+      for (const [key, lists] of listsCache.entries()) {
+        if (lists.some(list => list._id === listId)) {
+          listExists = true
+          break
+        }
+      }
+      
+      if (!listExists) {
         return reply.status(404).send({ error: 'Lista não encontrada' })
       }
 
+      // Gerar ID único para o item da lista
+      const itemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+      
       // If no sortIndex provided, use next available index
       if (data.sortIndex === undefined) {
-        const maxSortIndex = await ListItem.findOne({ listId: new Types.ObjectId(listId) })
-          .sort({ sortIndex: -1 })
-          .select('sortIndex')
-        data.sortIndex = (maxSortIndex?.sortIndex || 0) + 1
+        const items = listItemsCache.get(listId) || []
+        const maxSortIndex = items.length > 0 
+          ? Math.max(...items.map((item: any) => item.sortIndex || 0)) 
+          : 0
+        data.sortIndex = maxSortIndex + 1
       }
 
-      const listItem = new ListItem({
-        listId: new Types.ObjectId(listId),
-        gameId: new Types.ObjectId(data.gameId),
+      const listItem = {
+        _id: itemId,
+        listId,
+        gameId: data.gameId,
         notes: data.notes,
-        sortIndex: data.sortIndex
-      })
+        sortIndex: data.sortIndex,
+        createdAt: new Date()
+      }
 
-      await listItem.save()
-      await listItem.populate('gameId')
-      
+      // Armazenar item no cache
+      const listItems = listItemsCache.get(listId) || []
+      listItems.push(listItem)
+      listItemsCache.set(listId, listItems)
+
       return reply.status(201).send(listItem)
     } catch (error: any) {
-      if (error.code === 11000) {
-        return reply.status(409).send({ error: 'Jogo já está nesta lista' })
-      }
+      // Neste ponto, listId e data podem não estar definidos no escopo do catch
+      // Por isso, vamos apenas retornar o erro
       return reply.status(400).send({ error: error.message })
     }
   })
@@ -145,41 +146,34 @@ export default async function listsRoutes(app: FastifyInstance) {
   // GET /lists/:listId/items - Listar itens da lista
   app.get('/lists/:listId/items', async (req: any, reply: any) => {
     const schema = z.object({
-      listId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'listId deve ser um ObjectId válido'
-      })
+      listId: z.string()
     })
 
     const { listId } = schema.parse(req.params)
     
-    const items = await ListItem.find({ listId: new Types.ObjectId(listId) })
-      .populate('gameId')
-      .sort({ sortIndex: 1, createdAt: 1 })
-
+    const items = listItemsCache.get(listId) || []
+    
     return reply.send(items)
   })
 
   // DELETE /lists/:listId/items/:itemId - Remover item da lista
   app.delete('/lists/:listId/items/:itemId', async (req: any, reply: any) => {
     const schema = z.object({
-      listId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'listId deve ser um ObjectId válido'
-      }),
-      itemId: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'itemId deve ser um ObjectId válido'
-      })
+      listId: z.string(),
+      itemId: z.string()
     })
 
     const { listId, itemId } = schema.parse(req.params)
     
-    const item = await ListItem.findOneAndDelete({
-      _id: new Types.ObjectId(itemId),
-      listId: new Types.ObjectId(listId)
-    })
+    const items = listItemsCache.get(listId) || []
+    const itemIndex = items.findIndex((item: any) => item._id === itemId)
     
-    if (!item) {
+    if (itemIndex === -1) {
       return reply.status(404).send({ error: 'Item não encontrado na lista' })
     }
+    
+    items.splice(itemIndex, 1)
+    listItemsCache.set(listId, items)
 
     return reply.status(204).send()
   })
@@ -187,20 +181,27 @@ export default async function listsRoutes(app: FastifyInstance) {
   // DELETE /lists/:id - Remover lista completa
   app.delete('/lists/:id', async (req: any, reply: any) => {
     const schema = z.object({
-      id: z.string().refine(val => Types.ObjectId.isValid(val), {
-        message: 'id deve ser um ObjectId válido'
-      })
+      id: z.string()
     })
 
     const { id } = schema.parse(req.params)
     
-    // Remove all list items first
-    await ListItem.deleteMany({ listId: new Types.ObjectId(id) })
+    // Remover todos os itens da lista
+    listItemsCache.delete(id)
     
-    // Remove the list
-    const list = await List.findByIdAndDelete(id)
+    // Remover a lista
+    let listDeleted = false
+    for (const [key, lists] of listsCache.entries()) {
+      const listIndex = lists.findIndex((list: any) => list._id === id)
+      if (listIndex !== -1) {
+        lists.splice(listIndex, 1)
+        listsCache.set(key, lists)
+        listDeleted = true
+        break
+      }
+    }
     
-    if (!list) {
+    if (!listDeleted) {
       return reply.status(404).send({ error: 'Lista não encontrada' })
     }
 

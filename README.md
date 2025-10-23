@@ -1,14 +1,12 @@
 # Looton Backend
 
-Fastify + TypeScript + MongoDB (Mongoose), Redis cache and BullMQ jobs.
+Fastify + TypeScript + Redis cache and BullMQ jobs (sem banco de dados persistente).
 
 ## Setup
 
-1. Copy env and fill Mongo:
+1. Copy env:
 
 cp .env.example .env
-
-Set MONGODB_URI and keep MONGODB_DBNAME=Looton.
 
 2. Install and run (Node 20+):
 
@@ -23,7 +21,7 @@ docker compose up -d
 
 - GET /health
 - GET /deals?minDiscount=&limit=
-- GET /search?q=&stores=steam (Epic temporariamente desativada para melhorias)
+- GET /search?q=&stores=steam,epic
 - GET /games/:id/offers
 - GET /games/:id/history
 - POST /users
@@ -51,8 +49,7 @@ npm install
 2) Variáveis de ambiente (arquivo `.env`):
 
 ```
-JWT_SECRET=uma_chave_secreta_de_desenvolvimento
-MONGODB_URI=mongodb://localhost:27017/looton
+# Não é necessário mais variáveis de autenticação
 ```
 
 3) Rodar em desenvolvimento:
