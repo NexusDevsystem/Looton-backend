@@ -13,6 +13,5 @@
     "types": ["node"],
     "noEmitOnError": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["src/db/**/*"]
+  "include": ["src/**/*"]
 }
