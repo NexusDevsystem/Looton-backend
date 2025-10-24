@@ -32,7 +32,7 @@ ListSchema.index({ slug: 1 }, { unique: true, partialFilterExpression: { userId:
 // Generate unique slug per user when creating or renaming
 ListSchema.pre('save', async function (next) {
   if (this.isNew || this.isModified('name')) {
-    let baseSlug = slugify(this.name)
+    const baseSlug = slugify(this.name)
     let slug = baseSlug
     let counter = 1
 

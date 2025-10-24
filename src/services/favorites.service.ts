@@ -112,8 +112,7 @@ async function sendNotification(data: NotificationData) {
 
       // favorite -> we don't have push tokens per favorite here; in debug flows client can pass tokens
       // For now, if data has a pushToken field, use it (debug endpoint sets it). Otherwise no-op.
-      // @ts-ignore
-      const pushToken = (data as any).pushToken
+    const pushToken = (data as any).pushToken
       if (pushToken && Expo.isExpoPushToken(pushToken)) {
         const messages = [{
           to: pushToken,

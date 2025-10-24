@@ -67,7 +67,10 @@ export async function listEpicFreeBase(locale = 'pt-BR', country = 'BR') {
           if (all.length > 0) {
             return { start: all[0].startDate, end: all[0].endDate };
           }
-        } catch (e) {}
+        } catch (e) {
+          // ignore parsing error inside promotions
+          void e
+        }
         return null;
       })();
 

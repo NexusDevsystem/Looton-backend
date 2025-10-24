@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
+import { listFreeGames } from '../integrations/epic/freeGames.js'
 
 
 // Cache de busca por cc|l|q por 5 minutos
@@ -105,7 +106,7 @@ export default async function searchRoutes(app: FastifyInstance) {
       // 1) Buscar candidatos leves via storesearch
       const term = encodeURIComponent(q.trim())
       const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${term}&cc=${cc}&l=${encodeURIComponent(l)}`
-      let data: any = await fetchJson(searchUrl)
+      const data: any = await fetchJson(searchUrl)
       let items: any[] = Array.isArray(data?.items) ? data.items : []
 
       // Fallback: steamcommunity SearchApps se vazio
@@ -146,7 +147,7 @@ export default async function searchRoutes(app: FastifyInstance) {
       for (const x of out) {
         if (!uniq.has(x.id)) uniq.set(x.id, x)
       }
-      let enriched = Array.from(uniq.values())
+      const enriched = Array.from(uniq.values())
 
       // 4) Ordenação: match texto desc (exato > prefixo > resto), depois desconto desc, depois menor preço final
       const qLower = q.trim().toLowerCase()
@@ -165,11 +166,65 @@ export default async function searchRoutes(app: FastifyInstance) {
       // 5) Cache curto (não cachear vazio)
       if (enriched.length) cache.set(cacheKey, enriched)
 
-      // 6) Paginar
-      const start = (pageNum - 1) * pageSize
-      const pageItems = enriched.slice(start, start + pageSize)
-
-      return reply.send(pageItems)
+      // 6) Incluir jogos da Epic Games na busca
+      try {
+        const epicDeals = await listFreeGames(l, cc, cc);
+        const epicMatches = epicDeals.filter(deal => 
+          deal.title.toLowerCase().includes(qLower)
+        ).map(deal => ({
+          id: deal.id,
+          kind: deal.kind,
+          title: deal.title,
+          image: deal.coverUrl,
+          currency: deal.currency,
+          priceOriginalCents: deal.stores[0]?.priceBase ? Math.round(deal.stores[0].priceBase * 100) : null,
+          priceFinalCents: deal.stores[0]?.priceFinal ? Math.round(deal.stores[0].priceFinal * 100) : null,
+          discountPct: deal.stores[0]?.discountPct,
+          tags: deal.tags
+        }));
+        
+        // Combinar resultados da Steam com da Epic Games
+        const combinedResults = [...enriched, ...epicMatches];
+        
+        // Remover duplicados pelos IDs
+        const uniqueResults = new Map<string, any>();
+        for (const item of combinedResults) {
+          if (!uniqueResults.has(item.id)) {
+            uniqueResults.set(item.id, item);
+          }
+        }
+        
+        const allResults = Array.from(uniqueResults.values());
+        
+        // Reordenar os resultados combinados
+        allResults.sort((a, b) => {
+          const sa = isTextMatchScore(qLower, a.title);
+          const sb = isTextMatchScore(qLower, b.title);
+          if (sb !== sa) return sb - sa;
+          const da = typeof a.discountPct === 'number' ? a.discountPct : -1;
+          const db = typeof b.discountPct === 'number' ? b.discountPct : -1;
+          if (db !== da) return db - da;
+          const fa = typeof a.priceFinalCents === 'number' ? a.priceFinalCents : Number.MAX_SAFE_INTEGER;
+          const fb = typeof b.priceFinalCents === 'number' ? b.priceFinalCents : Number.MAX_SAFE_INTEGER;
+          return fa - fb;
+        });
+        
+        // Cache dos resultados combinados
+        if (allResults.length) cache.set(cacheKey, allResults);
+        
+        // Paginar resultados combinados
+        const start = (pageNum - 1) * pageSize;
+        const pageItems = allResults.slice(start, start + pageSize);
+        
+        return reply.send(pageItems);
+      } catch (epicErr) {
+        console.error('Erro ao buscar dados da Epic Games:', epicErr);
+        // Se ocorrer erro ao buscar da Epic, retornar apenas os resultados da Steam
+        if (enriched.length) cache.set(cacheKey, enriched);
+        const start = (pageNum - 1) * pageSize;
+        const pageItems = enriched.slice(start, start + pageSize);
+        return reply.send(pageItems);
+      }
     } catch (err) {
       console.error('Erro na rota /search (nova lógica):', err)
       return reply.status(500).send({ error: 'Erro interno do servidor' })

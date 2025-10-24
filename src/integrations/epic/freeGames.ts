@@ -2,6 +2,40 @@ import axios, { AxiosResponse } from 'axios';
 import { ConsolidatedDeal } from '../../services/consolidated-deals.service';
 import { logger } from '../../utils/logger';
 
+// Função para calcular o desconto percentual de forma segura
+function calculateDiscountPercent(originalPrice: number = 0, finalPrice: number = 0): number {
+  // Se o preço original é 0, não há como calcular desconto
+  if (originalPrice <= 0) {
+    // Se o preço final também é 0, é um jogo grátis, mas sem preço original conhecido
+    // Vamos considerar 100% de desconto se o final for 0
+    return finalPrice === 0 ? 100 : 0;
+  }
+  
+  // Se o preço final é 0, é 100% de desconto (jogo grátis)
+  if (finalPrice === 0) {
+    return 100;
+  }
+  
+  // Cálculo normal do desconto
+  const discount = ((originalPrice - finalPrice) / originalPrice) * 100;
+  
+  // Validar o resultado e retornar um valor dentro dos limites razoáveis
+  if (isNaN(discount) || discount < 0 || discount > 100) {
+    // Se o desconto calculado é inválido, verificar casos especiais
+    if (finalPrice === 0) {
+      return 100; // Jogo grátis
+    } else if (finalPrice >= originalPrice) {
+      return 0; // Sem desconto ou preço aumentou
+    } else {
+      // Retornar 0 como fallback seguro
+      return 0;
+    }
+  }
+  
+  // Arredondar para um número inteiro para consistência
+  return Math.round(discount);
+}
+
 // Cache em memória para os dados da Epic Games
 const epicCache = new Map<string, { data: any; timestamp: number }>();
 
@@ -189,12 +223,12 @@ export async function listFreeGames(
         // Verificar se o jogo está em promoção (desconto > 0 ou preço final menor que o original)
         const originalPrice = promotion.price?.totalPrice?.originalPrice;
         const finalPrice = promotion.price?.totalPrice?.discountPrice;
-        const discountPercent = promotion.price?.totalPrice?.discount;
+        const calculatedDiscountPercent = calculateDiscountPercent(originalPrice, finalPrice);
         
         // Considerar jogo em promoção se:
         // 1. É gratuito (finalPrice === 0) OU
         // 2. Tem desconto real (finalPrice < originalPrice e desconto > 0)
-        const isOnPromotion = finalPrice === 0 || (finalPrice < originalPrice && discountPercent > 0);
+        const isOnPromotion = finalPrice === 0 || (finalPrice < originalPrice && calculatedDiscountPercent > 0);
         
         if (!isOnPromotion) continue;
 
@@ -231,13 +265,13 @@ export async function listFreeGames(
             url: promotion.url ? promotion.url : `https://store.epicgames.com/pt-BR/p/${slug}`,
             priceBase: promotion.price?.totalPrice?.originalPrice ? promotion.price.totalPrice.originalPrice / 100 : 0, // Converter de centavos para reais
             priceFinal: promotion.price?.totalPrice?.discountPrice ? promotion.price.totalPrice.discountPrice / 100 : 0, // Converter de centavos para reais
-            discountPct: promotion.price?.totalPrice?.discount ? promotion.price.totalPrice.discount : 0,
+            discountPct: calculateDiscountPercent(promotion.price?.totalPrice?.originalPrice, promotion.price?.totalPrice?.discountPrice),
             isActive: true
           }],
           bestPrice: {
             store: 'epic',
             price: promotion.price?.totalPrice?.discountPrice ? promotion.price.totalPrice.discountPrice / 100 : 0, // Converter de centavos para reais
-            discountPct: promotion.price?.totalPrice?.discount ? promotion.price.totalPrice.discount : 0
+            discountPct: calculateDiscountPercent(promotion.price?.totalPrice?.originalPrice, promotion.price?.totalPrice?.discountPrice)
           },
           totalStores: 1
         };

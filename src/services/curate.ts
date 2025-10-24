@@ -20,7 +20,7 @@ export type CuratedItem = {
 export type CuratedFeed = { slotDate: string; items: CuratedItem[] }
 
 const rotationPath = env.ROTATION_FILE
-let rotationMemory: Record<number, string> = loadJson(rotationPath, {})
+const rotationMemory: Record<number, string> = loadJson(rotationPath, {})
 let currentFeed: CuratedFeed = { slotDate: new Date().toISOString(), items: [] }
 
 function hoursAgo(h: number) {
@@ -109,7 +109,7 @@ export async function buildCuratedFeed(): Promise<CuratedFeed> {
     const prev = byApp.get(it.appId)
     if (!prev || it.score > prev.score) byApp.set(it.appId, it)
   }
-  let deduped = Array.from(byApp.values())
+  const deduped = Array.from(byApp.values())
   deduped.sort((a, b) => b.score - a.score)
 
   // Diversity: limit max 50% to same primary genre (first genre if exists)

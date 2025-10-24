@@ -1,6 +1,6 @@
 // Script para testar notificações push
-require('dotenv').config();
-const { sendPush } = require('./dist/services/notification.service.js');
+import('dotenv').then(d => d.config());
+const { sendPush } = await import('./dist/services/notification.service.js');
 
 async function testPushNotification() {
   const args = process.argv.slice(2);

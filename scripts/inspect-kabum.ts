@@ -13,7 +13,7 @@ async function main() {
   try {
     const data = JSON.parse(json)
     const root: any = data.props?.pageProps ?? data
-    function walk(node: any, path: string) {
+    const walk = (node: any, path: string) => {
       if (!node) return
       if (Array.isArray(node)) {
         if (node.length > 0 && node.length < 200 && typeof node[0] === 'object') {

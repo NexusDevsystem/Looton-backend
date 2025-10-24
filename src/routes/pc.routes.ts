@@ -197,6 +197,10 @@ export default async function pcRoutes(app: FastifyInstance) {
             let items = res || []
             if (offset) items = items.slice(offset)
             if (limit) items = items.slice(0, limit)
+            // Only sort if not using offset (first page) - for better performance
+            if (!offset) {
+              items.sort((a, b) => (b.discountPct || 0) - (a.discountPct || 0))
+            }
             return reply.send({ slotDate: new Date().toISOString(), items })
           } catch (e) {
             req.log.warn({ err: e }, 'terabyte search failed')
@@ -208,13 +212,21 @@ export default async function pcRoutes(app: FastifyInstance) {
       const cacheKey = JSON.stringify({ stores, categories, limit, full: true })
       const cached = fullCache.get(cacheKey)
       if (cached && Date.now() - cached.at < env.PC_FULL_CACHE_TTL_SECONDS * 1000) {
-        return reply.send(cached.payload)
+        let items = cached.payload.items;
+        if (text) {
+          // Apply text search filter to cached items for better performance
+          items = items.filter((it) => matchesSmart(it, text))
+        }
+        // Apply pagination after filtering
+        if (offset) items = items.slice(offset)
+        if (limit) items = items.slice(0, limit)
+        return reply.send({ ...cached.payload, items })
       }
       const map: Record<string, (o?: any) => Promise<PcOffer[]>> = {
         terabyte: (o?: any) => terabyte.fetchDeals(o)
       }
       const selected = (stores.length ? stores : Object.keys(map)).filter((s) => map[s])
-      let raw: PcOffer[] = []
+      const raw: PcOffer[] = []
       for (const s of selected) {
         try {
           const part = await map[s]({ limit: Number(q.limit) || 500 })
@@ -237,10 +249,12 @@ export default async function pcRoutes(app: FastifyInstance) {
       if (text) {
         items = items.filter((it) => matchesSmart(it, text))
       }
-      // sort by discount desc if available
-      items.sort((a, b) => (b.discountPct || 0) - (a.discountPct || 0))
-  if (offset) items = items.slice(offset)
-  if (limit) items = items.slice(0, limit)
+      // sort by discount desc if available, but only if no offset (first page) for performance
+      if (!offset) {
+        items.sort((a, b) => (b.discountPct || 0) - (a.discountPct || 0))
+      }
+      if (offset) items = items.slice(offset)
+      if (limit) items = items.slice(0, limit)
       const payload = { slotDate: new Date().toISOString(), items }
       fullCache.set(cacheKey, { at: Date.now(), payload })
       return reply.send(payload)

@@ -72,7 +72,7 @@ export default async function steamRoutes(app: FastifyInstance) {
       const lim = limit || 20
 
       // Call adapter directly (doesn't persist to DB here)
-      let offers = await steamAdapter.search(q)
+      const offers = await steamAdapter.search(q)
 
       // Try to enrich a subset of offers with real Steam prices to avoid heavy load
       const maxFetch = 8

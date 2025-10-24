@@ -22,7 +22,7 @@ function extractJsonLd(html: string): any[] {
       const json = JSON.parse(m[1].trim())
       if (Array.isArray(json)) arr.push(...json)
       else arr.push(json)
-    } catch {}
+    } catch (e) { void e }
   }
   return arr
 }
@@ -37,7 +37,7 @@ async function fetchPromoListingUrls(): Promise<string[]> {
   const res = await fetchRateLimited(env.TBT_CATEGORY_URL)
   if (!res.ok) return []
   const html = await res.text()
-  const hrefs = [...html.matchAll(/href=\s*["']((?:https?:\/\/www\.terabyteshop\.com\.br)?\/produto\/[^"']+)["']/g)].map((m) => m[1].startsWith('http') ? m[1] : `https://www.terabyteshop.com.br${m[1]}`)
+  const hrefs = [...html.matchAll(/href=\s*["']((?:https?:\/\/www\.terabyteshop\.com\.br)?\/produto\/[^"]+)["']/g)].map((m) => m[1].startsWith('http') ? m[1] : `https://www.terabyteshop.com.br${m[1]}`)
   // unique
   return Array.from(new Set(hrefs)).slice(0, 24)
 }
@@ -70,8 +70,10 @@ async function fetchManyListingPages(): Promise<string[]> {
 function parseListingOffers(html: string): PcOffer[] {
   // Parse product tiles from the listing page to avoid per-product requests
   const items: PcOffer[] = []
-  const blocks = html.split(/<article|<div[^>]+class=\"product-item\"/i)
-  const selectBaseAndFinal = (segment: string) => {
+  const blocks = html.split(/<article|<div[^>]+class="product-item"/i)
+  
+  // Função auxiliar para selecionar preços base e final
+  function selectBaseAndFinal(segment: string) {
     // Find all prices with context, then filter out installments like "10x de R$ 199,99"
     const matches = [...segment.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}/g)].map(m => ({
       text: m[0],
@@ -103,14 +105,15 @@ function parseListingOffers(html: string): PcOffer[] {
     const baseCents = filtered[filtered.length - 1]
     return { finalCents, baseCents }
   }
+  
   for (const block of blocks) {
     // URL
-    const url = (block.match(/href=\"(https:\/\/www\.terabyteshop\.com\.br\/produto\/[^\"]+)\"/) || [])[1]
+    const url = (block.match(/href="(https:\/\/www\.terabyteshop\.com\.br\/produto\/[^"]+)"/) || [])[1]
     if (!url) continue
     // Title
-    const title = (block.match(/title=\"([^\"]+)\"/) || block.match(/class=\"prod-name[^\"]*\">\s*([^<]+)\s*</i) || [])[1]
+    const title = (block.match(/title="([^\"]+)"/) || block.match(/class="prod-name[^\"]*">\s*([^<]+)\s*</i) || [])[1]
     // Image
-    const image = (block.match(/<img[^>]+src=\"([^\"]+)\"/i) || [])[1]
+    const image = (block.match(/<img[^>]+src="([^\"]+)"/i) || [])[1]
     // Prices: ignore installments and map base (original) vs final (com desconto)
     const { finalCents: priceFinalCents, baseCents: priceBaseCents } = selectBaseAndFinal(block)
     if (!priceFinalCents) continue
@@ -137,7 +140,7 @@ function parseListingOffers(html: string): PcOffer[] {
 
 function parseAroundAnchorOffers(html: string): PcOffer[] {
   const items: PcOffer[] = []
-  const re = /href=\"(https:\/\/www\.terabyteshop\.com\.br\/produto\/[^\"]+)\"[^>]*>([^<]{3,200})<\/a>/gi
+  const re = /href="(https:\/\/www\.terabyteshop\.com\.br\/produto\/[^"]+)"[^>]*>([^<]{3,200})<\/a>/gi
   let m: RegExpExecArray | null
   const seen = new Set<string>()
   while ((m = re.exec(html))) {
@@ -199,7 +202,7 @@ export async function fetchDeals(opts: FetchOptions = {}): Promise<PcOffer[]> {
   try {
     // First, try to parse offers directly from many listing pages (promos and deep seeds)
     const pages = await fetchManyListingPages()
-    let collected: PcOffer[] = []
+    const collected: PcOffer[] = []
     for (const pageUrl of pages) {
       const res = await fetchRateLimited(pageUrl)
       if (!res.ok) continue
@@ -214,28 +217,28 @@ export async function fetchDeals(opts: FetchOptions = {}): Promise<PcOffer[]> {
       const top = collected.slice(0, Math.min(10, collected.length))
       for (let i = 0; i < top.length; i++) {
         try {
-          const r = await fetchRateLimited(top[i].url)
-          if (!r.ok) continue
-          const h = await r.text()
-          const blocks = extractJsonLd(h)
-          const products = blocks.filter((b) => (b['@type'] === 'Product' || (Array.isArray(b['@type']) && b['@type'].includes('Product'))))
-          const p = products[0]
-          if (!p) continue
-          const offersNode = p.offers || {}
-          const finalCents = parseCurrencyBRLToCents(offersNode.price || offersNode.lowPrice)
-          const baseCents = parseCurrencyBRLToCents(offersNode.highPrice || offersNode.priceSpecification?.price || undefined)
-          if (finalCents) {
-            top[i].priceFinalCents = finalCents
-            top[i].priceBaseCents = baseCents && baseCents > finalCents ? baseCents : undefined
-            const pb = top[i].priceBaseCents
-            const pf = top[i].priceFinalCents
-            if (typeof pb === 'number' && typeof pf === 'number') {
-              top[i].discountPct = Math.max(0, Math.round((1 - pf / pb) * 100))
-            } else {
-              top[i].discountPct = undefined
-            }
-          }
-        } catch {}
+              const r = await fetchRateLimited(top[i].url)
+              if (!r.ok) continue
+              const h = await r.text()
+              const blocks = extractJsonLd(h)
+              const products = blocks.filter((b) => (b['@type'] === 'Product' || (Array.isArray(b['@type']) && b['@type'].includes('Product'))))
+              const p = products[0]
+              if (!p) continue
+              const offersNode = p.offers || {}
+              const finalCents = parseCurrencyBRLToCents(offersNode.price || offersNode.lowPrice)
+              const baseCents = parseCurrencyBRLToCents(offersNode.highPrice || offersNode.priceSpecification?.price || undefined)
+              if (finalCents) {
+                top[i].priceFinalCents = finalCents
+                top[i].priceBaseCents = baseCents && baseCents > finalCents ? baseCents : undefined
+                const pb = top[i].priceBaseCents
+                const pf = top[i].priceFinalCents
+                if (typeof pb === 'number' && typeof pf === 'number') {
+                  top[i].discountPct = Math.max(0, Math.round((1 - pf / pb) * 100))
+                } else {
+                  top[i].discountPct = undefined
+                }
+              }
+            } catch (e) { void e }
       }
       // write back enriched items
       for (let i = 0; i < top.length; i++) collected[i] = top[i]
@@ -259,7 +262,7 @@ export async function fetchDeals(opts: FetchOptions = {}): Promise<PcOffer[]> {
       let added = 0
       const blocks = extractJsonLd(h)
       const products = blocks.filter((b) => (b['@type'] === 'Product' || (Array.isArray(b['@type']) && b['@type'].includes('Product'))))
-      for (const p of products) {
+  for (const p of products) {
         const name: string = p.name || p.title
         const image: string | undefined = Array.isArray(p.image) ? p.image[0] : p.image
         const sku: string | undefined = p.sku
@@ -332,7 +335,7 @@ export async function fetchSearch(opts: FetchOptions & { q?: string } = {}): Pro
     } else {
       pages.push(firstUrl)
     }
-    let collected: PcOffer[] = []
+    const collected: PcOffer[] = []
     for (const u of pages) {
       const res = await fetchRateLimited(u)
       if (!res.ok) continue

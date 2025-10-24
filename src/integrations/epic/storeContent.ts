@@ -53,7 +53,7 @@ export function extractAllImages(pageJson: any): string[] {
     if (Array.isArray(obj)) return obj.forEach(walk);
     if (typeof obj === 'object') {
       for (const k of Object.keys(obj)) {
-        try { walk(obj[k]); } catch (e) { }
+        try { walk(obj[k]); } catch (e) { void e }
       }
     }
   };
@@ -81,7 +81,7 @@ export function extractRequirements(pageJson: any): { platform?: string; items: 
       for (const k of Object.keys(obj)) {
         const lk = k.toLowerCase();
         for (const kw of keywords) if (lk.includes(kw)) { walk(obj[k]); break; }
-        try { walk(obj[k]); } catch (e) {}
+        try { walk(obj[k]); } catch (e) { void e }
       }
     }
   };
