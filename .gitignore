@@ -8,6 +8,9 @@ dist/
 .env.test.local
 .env.production.local
 
+# Firebase credentials
+firebase-admin-key.json
+
 # Logs
 logs
 *.log
