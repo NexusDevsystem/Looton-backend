@@ -21,6 +21,7 @@ const envSchema = z.object({
   CURATION_ROTATION_COOLDOWN_HOURS: z.coerce.number().default(72),
   CURATION_FEED_SIZE: z.coerce.number().default(30),
   CURATION_CRON: z.string().default('*/30 * * * *'),
+  ROTATION_FILE: z.string().default('.rotation_memory.json'),
   CACHE_TTL_SECONDS: z.coerce.number().default(900),
   OFFERS_EXPIRATION_DAYS: z.coerce.number().default(7),
   OFFERS_CLEANUP_CRON: z.string().default('0 */6 * * *'),
@@ -29,6 +30,7 @@ const envSchema = z.object({
   PC_CUR_ROTATION_COOLDOWN_HOURS: z.coerce.number().default(72),
   PC_CUR_FEED_SIZE: z.coerce.number().default(40),
   PC_CUR_CRON: z.string().default('*/30 * * * *'),
+  PC_ROTATION_FILE: z.string().default('.pc_rotation.json'),
   PC_CACHE_TTL_SECONDS: z.coerce.number().default(900),
   // Full-mode caching (raw connectors results) TTL in seconds
   PC_FULL_CACHE_TTL_SECONDS: z.coerce.number().default(1800),
