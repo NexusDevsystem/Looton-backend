@@ -102,7 +102,7 @@ export default async function notificationsRoutes(app: FastifyInstance) {
     const { pushToken, title, body } = schema.parse(req.body)
     
     try {
-      // Enviar push notification via Expo Push API
+      // Enviar push notification via Expo Push API com PRIORIDADE MÁXIMA
       const message = {
         to: pushToken,
         sound: 'default',
@@ -110,8 +110,17 @@ export default async function notificationsRoutes(app: FastifyInstance) {
         body,
         priority: 'high' as const,
         channelId: 'default',
-        data: { type: 'confirmation' },
+        data: { 
+          type: 'confirmation',
+          experienceId: '@nyill/looton-app',
+        },
         badge: 1,
+        // Configurações Android para HEAD-UP notification
+        android: {
+          sound: 'default',
+          priority: 'max' as const,
+          vibrate: [0, 250, 250, 250],
+        },
       }
 
       const response = await fetch('https://exp.host/--/api/v2/push/send', {
@@ -119,6 +128,7 @@ export default async function notificationsRoutes(app: FastifyInstance) {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
         },
         body: JSON.stringify(message),
       })
@@ -126,7 +136,8 @@ export default async function notificationsRoutes(app: FastifyInstance) {
       const result = await response.json()
       
       if (result.data?.status === 'ok') {
-        console.log('✅ Notificação push de confirmação enviada:', pushToken)
+        console.log('✅ Push notification enviada com sucesso:', pushToken)
+        console.log('📨 Message ID:', result.data.id)
         return reply.send({ success: true, result })
       } else {
         console.error('❌ Erro ao enviar push:', result)
