@@ -90,4 +90,50 @@ export default async function notificationsRoutes(app: FastifyInstance) {
     await evaluateAndPush(deal)
     return reply.send({ ok: true })
   })
+
+  // Endpoint para enviar notificação de confirmação via Expo Push
+  app.post('/send-confirmation', async (req: any, reply: any) => {
+    const schema = z.object({
+      pushToken: z.string(),
+      title: z.string(),
+      body: z.string(),
+    })
+    
+    const { pushToken, title, body } = schema.parse(req.body)
+    
+    try {
+      // Enviar push notification via Expo Push API
+      const message = {
+        to: pushToken,
+        sound: 'default',
+        title,
+        body,
+        priority: 'high' as const,
+        channelId: 'default',
+        data: { type: 'confirmation' },
+      }
+
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(message),
+      })
+
+      const result = await response.json()
+      
+      if (result.data?.status === 'ok') {
+        console.log('✅ Notificação push de confirmação enviada:', pushToken)
+        return reply.send({ success: true, result })
+      } else {
+        console.error('❌ Erro ao enviar push:', result)
+        return reply.code(500).send({ success: false, error: result })
+      }
+    } catch (error) {
+      console.error('❌ Erro ao enviar notificação push:', error)
+      return reply.code(500).send({ success: false, error: String(error) })
+    }
+  })
 }
