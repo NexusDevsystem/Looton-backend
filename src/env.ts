@@ -22,7 +22,6 @@ const envSchema = z.object({
   CURATION_FEED_SIZE: z.coerce.number().default(30),
   CURATION_CRON: z.string().default('*/30 * * * *'),
   CACHE_TTL_SECONDS: z.coerce.number().default(900),
-  ROTATION_FILE: z.string().default('.rotation_memory.json'),
   OFFERS_EXPIRATION_DAYS: z.coerce.number().default(7),
   OFFERS_CLEANUP_CRON: z.string().default('0 */6 * * *'),
   // PC Hardware deals (no DB)
@@ -31,7 +30,6 @@ const envSchema = z.object({
   PC_CUR_FEED_SIZE: z.coerce.number().default(40),
   PC_CUR_CRON: z.string().default('*/30 * * * *'),
   PC_CACHE_TTL_SECONDS: z.coerce.number().default(900),
-  PC_ROTATION_FILE: z.string().default('.pc_rotation.json'),
   // Full-mode caching (raw connectors results) TTL in seconds
   PC_FULL_CACHE_TTL_SECONDS: z.coerce.number().default(1800),
   // PC filtering: keep only computer parts and peripherals
