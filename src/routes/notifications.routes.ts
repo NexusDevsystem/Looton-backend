@@ -1,7 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { evaluateAndPush } from '../services/notification.service.js'
-import { sendPushNotification } from '../services/firebase.service.js'
 
 // Caches em memória para as regras de notificação e janelas de preço (sem MongoDB)
 const notificationRulesCache = new Map<string, any[]>()
@@ -92,7 +91,7 @@ export default async function notificationsRoutes(app: FastifyInstance) {
     return reply.send({ ok: true })
   })
 
-  // Endpoint para enviar notificação de confirmação via Firebase FCM
+  // Endpoint para enviar notificação de confirmação via Expo Push API
   app.post('/send-confirmation', async (req: any, reply: any) => {
     const schema = z.object({
       pushToken: z.string(),
@@ -103,9 +102,36 @@ export default async function notificationsRoutes(app: FastifyInstance) {
     const { pushToken, title, body } = schema.parse(req.body)
     
     try {
-      const result = await sendPushNotification(pushToken, title, body, { type: 'confirmation' })
-      console.log('✅ Notificação push de confirmação enviada:', pushToken)
-      return reply.send({ success: true, result })
+      // Enviar push notification via Expo Push API
+      const message = {
+        to: pushToken,
+        sound: 'default',
+        title,
+        body,
+        priority: 'high' as const,
+        channelId: 'default',
+        data: { type: 'confirmation' },
+        badge: 1,
+      }
+
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(message),
+      })
+
+      const result = await response.json()
+      
+      if (result.data?.status === 'ok') {
+        console.log('✅ Notificação push de confirmação enviada:', pushToken)
+        return reply.send({ success: true, result })
+      } else {
+        console.error('❌ Erro ao enviar push:', result)
+        return reply.code(500).send({ success: false, error: result })
+      }
     } catch (error) {
       console.error('❌ Erro ao enviar notificação push:', error)
       return reply.code(500).send({ success: false, error: String(error) })

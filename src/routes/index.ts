@@ -22,7 +22,7 @@ export default async function routes(app: FastifyInstance) {
   await app.register(searchRoutes)
   await app.register(gamesRoutes)
   await app.register(alertsRoutes)
-  await app.register(notificationsRoutes)
+  await app.register(notificationsRoutes, { prefix: '/notifications' })
   await app.register(favoritesRoutes)
   await app.register(listsRoutes)
   await app.register(debugRoutes)
