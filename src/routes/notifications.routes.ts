@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { evaluateAndPush } from '../services/notification.service.js'
+import { userActivityTracker } from '../services/user-activity.service.js'
 
 // Caches em memória para as regras de notificação e janelas de preço (sem MongoDB)
 const notificationRulesCache = new Map<string, any[]>()
@@ -135,17 +136,60 @@ export default async function notificationsRoutes(app: FastifyInstance) {
 
       const result = await response.json()
       
+      console.log('📋 Resposta completa do Expo Push:', JSON.stringify(result, null, 2));
+      
       if (result.data?.status === 'ok') {
         console.log('✅ Push notification enviada com sucesso:', pushToken)
         console.log('📨 Message ID:', result.data.id)
         return reply.send({ success: true, result })
+      } else if (result.data?.status === 'error') {
+        console.error('❌ Expo Push retornou erro:', result.data);
+        console.error('   Detalhes:', result.data.message);
+        console.error('   Detalhes extras:', result.data.details);
+        return reply.code(500).send({ success: false, error: result.data })
       } else {
-        console.error('❌ Erro ao enviar push:', result)
+        console.error('❌ Resposta inesperada do Expo:', result)
         return reply.code(500).send({ success: false, error: result })
       }
     } catch (error) {
       console.error('❌ Erro ao enviar notificação push:', error)
       return reply.code(500).send({ success: false, error: String(error) })
     }
+  })
+
+  // Endpoint para registrar atividade do usuário
+  app.post('/activity', async (req: any, reply: any) => {
+    const schema = z.object({
+      userId: z.string(),
+      pushToken: z.string().optional(),
+    })
+    
+    try {
+      const { userId, pushToken } = schema.parse(req.body)
+      userActivityTracker.recordActivity(userId, pushToken)
+      
+      return reply.send({ success: true, message: 'Atividade registrada' })
+    } catch (error) {
+      console.error('❌ Erro ao registrar atividade:', error)
+      return reply.code(400).send({ success: false, error: String(error) })
+    }
+  })
+
+  // Endpoint para obter estatísticas de atividade
+  app.get('/activity/stats', async (req: any, reply: any) => {
+    const stats = userActivityTracker.getStats()
+    return reply.send(stats)
+  })
+
+  // Endpoint para obter atividade de um usuário específico
+  app.get('/activity/:userId', async (req: any, reply: any) => {
+    const { userId } = req.params as any
+    const activity = userActivityTracker.getActivity(userId)
+    
+    if (!activity) {
+      return reply.code(404).send({ error: 'Usuário não encontrado' })
+    }
+    
+    return reply.send(activity)
   })
 }

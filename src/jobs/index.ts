@@ -3,6 +3,7 @@ import { env } from '../env.js'
 import { runUpdateAllStores } from './updateAllStores.job.js'
 import { runRefreshCurrency } from './refreshCurrency.job.js'
 import { startCleanupJob } from './cleanupOffers.job.js'
+import { startReengagementJob } from './reengagement.job.js'
 
 export async function startJobs() {
   const { queue: q1 } = createQueue<'updateAllStores'>('updateAllStores')
@@ -15,6 +16,9 @@ export async function startJobs() {
 
   // start cleanup job
   startCleanupJob()
+
+  // start reengagement job (notificações estilo Duolingo)
+  startReengagementJob()
 
   // kick once on startup (non-blocking)
   q1.add('updateAllStores', {})
