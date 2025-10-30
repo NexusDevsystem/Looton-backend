@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { evaluateAndPush } from '../services/notification.service.js'
 import { userActivityTracker } from '../services/user-activity.service.js'
+import { getDailyOfferHistory } from '../jobs/dailyOffer.job.js'
 
 // Caches em memória para as regras de notificação e janelas de preço (sem MongoDB)
 const notificationRulesCache = new Map<string, any[]>()
@@ -191,5 +192,11 @@ export default async function notificationsRoutes(app: FastifyInstance) {
     }
     
     return reply.send(activity)
+  })
+
+  // Endpoint para obter histórico de Ofertas do Dia enviadas
+  app.get('/daily-offers/history', async (req: any, reply: any) => {
+    const history = getDailyOfferHistory()
+    return reply.send(history)
   })
 }

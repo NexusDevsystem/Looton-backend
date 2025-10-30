@@ -112,6 +112,11 @@ class UserActivityTracker {
   getActivity(userId: string): UserActivity | undefined {
     return this.activities.get(userId);
   }
+
+  // Obter todos os usuários (para notificação diária)
+  getAllUsers(): UserActivity[] {
+    return Array.from(this.activities.values());
+  }
   
   // Limpar cache (útil para testes)
   clear(): void {
