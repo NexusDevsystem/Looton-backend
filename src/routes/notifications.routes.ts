@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { evaluateAndPush } from '../services/notification.service.js'
 import { userActivityTracker } from '../services/user-activity.service.js'
-import { getDailyOfferHistory } from '../jobs/dailyOffer.job.js'
+import { getDailyOfferHistory, runDailyOfferNotification } from '../jobs/dailyOffer.job.js'
 
 // Caches em memória para as regras de notificação e janelas de preço (sem MongoDB)
 const notificationRulesCache = new Map<string, any[]>()
@@ -198,5 +198,23 @@ export default async function notificationsRoutes(app: FastifyInstance) {
   app.get('/daily-offers/history', async (req: any, reply: any) => {
     const history = getDailyOfferHistory()
     return reply.send(history)
+  })
+
+  // Endpoint de TESTE para disparar Oferta do Dia manualmente
+  app.post('/daily-offers/test', async (req: any, reply: any) => {
+    try {
+      console.log('[TEST] Disparando Oferta do Dia manualmente...')
+      await runDailyOfferNotification()
+      return reply.send({ 
+        success: true, 
+        message: 'Notificação de Oferta do Dia enviada com sucesso! Verifique seu dispositivo.' 
+      })
+    } catch (error) {
+      console.error('[TEST] Erro ao enviar notificação:', error)
+      return reply.code(500).send({ 
+        success: false, 
+        error: String(error) 
+      })
+    }
   })
 }
