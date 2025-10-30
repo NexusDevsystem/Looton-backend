@@ -1,5 +1,6 @@
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { userActivityTracker } from '../services/user-activity.service.js';
+import cron from 'node-cron';
 
 const expo = new Expo();
 
@@ -170,8 +171,6 @@ async function getBestOfferOfTheDay() {
  * Inicia o cron job que executa diariamente às 12h (horário de Brasília)
  */
 export function startDailyOfferJob() {
-  const cron = require('node-cron');
-  
   // Executa todos os dias às 12h (0 12 * * *)
   cron.schedule('0 12 * * *', async () => {
     console.log('[DailyOfferJob] Trigger às 12h - executando...');
