@@ -18,11 +18,15 @@ const dailyOfferHistory: DailyOfferHistory[] = [];
 
 /**
  * Job que envia uma notificação diária com a melhor oferta do dia
- * Executa todos os dias às 12h
+ * Executa 2x por dia: 12h e 18h
  */
 export async function runDailyOfferNotification() {
   try {
     console.log('[DailyOfferJob] Iniciando envio de Oferta do Dia...');
+    
+    // Detectar horário para personalizar mensagem
+    const currentHour = new Date().getHours();
+    const isPeakTime = currentHour >= 18; // 18h ou depois
     
     // Obter todos os usuários ativos (que usaram o app nos últimos 30 dias)
     const allUsers = userActivityTracker.getAllUsers();
@@ -46,6 +50,11 @@ export async function runDailyOfferNotification() {
 
     console.log(`[DailyOfferJob] Oferta selecionada: ${bestOffer.title} - ${bestOffer.discount}% OFF`);
 
+    // Títulos personalizados por horário
+    const notificationTitle = isPeakTime 
+      ? '🌟 Oferta da Noite!' 
+      : '🎮 Oferta do Dia!';
+
     // Criar mensagens para todos os tokens válidos
     const validTokens = activeUsers
       .map(user => user.pushToken!)
@@ -54,7 +63,7 @@ export async function runDailyOfferNotification() {
     const messages: ExpoPushMessage[] = validTokens.map(token => ({
       to: token,
       sound: 'default',
-      title: '🎮 Oferta do Dia!',
+      title: notificationTitle,
       body: `${bestOffer.title} - ${bestOffer.discount}% OFF por ${bestOffer.priceFormatted}`,
       data: {
         type: 'daily_offer',
@@ -168,16 +177,24 @@ async function getBestOfferOfTheDay() {
 }
 
 /**
- * Inicia o cron job que executa diariamente às 12h (horário de Brasília)
+ * Inicia o cron job que executa 2x por dia (12h e 18h - horário de Brasília)
  */
 export function startDailyOfferJob() {
-  // Executa todos os dias às 12h (0 12 * * *)
+  // Executa todos os dias às 12h (meio-dia)
   cron.schedule('0 12 * * *', async () => {
-    console.log('[DailyOfferJob] Trigger às 12h - executando...');
+    console.log('[DailyOfferJob] 🌅 Trigger às 12h (meio-dia) - executando...');
     await runDailyOfferNotification();
   }, {
     timezone: 'America/Sao_Paulo'
   });
 
-  console.log('[DailyOfferJob] Job iniciado - executará diariamente às 12h (horário de Brasília)');
+  // Executa todos os dias às 18h (final da tarde)
+  cron.schedule('0 18 * * *', async () => {
+    console.log('[DailyOfferJob] 🌆 Trigger às 18h (final da tarde) - executando...');
+    await runDailyOfferNotification();
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  console.log('[DailyOfferJob] Job iniciado - executará 2x por dia: 12h e 18h (horário de Brasília)');
 }
