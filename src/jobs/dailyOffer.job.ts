@@ -226,6 +226,14 @@ export function startDailyOfferJob() {
     timezone: 'America/Sao_Paulo'
   });
 
+  // Executa todos os dias às 16:10h (meio da tarde)
+  cron.schedule('10 16 * * *', async () => {
+    console.log('[DailyOfferJob] ☀️ Trigger às 16:10h (meio da tarde) - executando...');
+    await runDailyOfferNotification();
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
   // Executa todos os dias às 18h (final da tarde)
   cron.schedule('0 18 * * *', async () => {
     console.log('[DailyOfferJob] 🌆 Trigger às 18h (final da tarde) - executando...');
@@ -234,5 +242,5 @@ export function startDailyOfferJob() {
     timezone: 'America/Sao_Paulo'
   });
 
-  console.log('[DailyOfferJob] Job iniciado - executará 2x por dia: 12h e 18h (horário de Brasília)');
+  console.log('[DailyOfferJob] Job iniciado - executará 3x por dia: 12h, 16:10h e 18h (horário de Brasília)');
 }
