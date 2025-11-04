@@ -11,7 +11,7 @@ export async function testPushRoutes(app: FastifyInstance) {
     console.log('🧪 [TEST PUSH NOW] Enviando notificação AGORA...');
     
     try {
-      const allUsers = userActivityTracker.getAllUsers();
+      const allUsers = await userActivityTracker.getAllUsers();
       console.log(`📊 [TEST PUSH NOW] Total de usuários: ${allUsers.length}`);
       
       if (allUsers.length === 0) {

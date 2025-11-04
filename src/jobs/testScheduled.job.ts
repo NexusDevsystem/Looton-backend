@@ -16,7 +16,7 @@ export function scheduleTestNotification() {
       console.log('🔔 [TEST SCHEDULED] Enviando notificação de teste agendada para 14:05...');
       
       try {
-        const activeUsers = userActivityTracker.getAllUsers();
+        const activeUsers = await userActivityTracker.getAllUsers();
         console.log(`📊 [TEST SCHEDULED] Usuários ativos: ${activeUsers.length}`);
         
         if (activeUsers.length === 0) {

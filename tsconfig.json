@@ -14,6 +14,7 @@
     "noEmitOnError": true
   },
   "include": ["src/**/*"],
+  "exclude": ["src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"],
   "ts-node": {
     "esm": true
   }
