@@ -8,7 +8,6 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "prebuild": "npm install --save-dev @types/node-cron",
     "build": "tsc -p tsconfig.json && node scripts/fix-extensions.cjs",
     "start": "node dist/server.js",
     "lint": "eslint .",
