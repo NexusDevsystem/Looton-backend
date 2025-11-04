@@ -1,13 +1,33 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { createAlert, deleteAlert, getAlertsByUser, registerUser, testNotify } from '../services/alerts.service.js'
+import { createAlert, deleteAlert, getAlertsByUser, testNotify } from '../services/alerts.service.js'
+import { userActivityTracker } from '../services/user-activity.service.js'
 
 export default async function alertsRoutes(app: FastifyInstance) {
+  // POST /users - Registrar usuário e push token
   app.post('/users', async (req: any, reply: any) => {
-    const schema = z.object({ email: z.string().email(), pushToken: z.string().optional() })
+    console.log('📥 [POST /users] Recebido:', JSON.stringify(req.body, null, 2));
+    
+    const schema = z.object({ 
+      userId: z.string(),
+      email: z.string().email().optional(), 
+      pushToken: z.string().optional() 
+    })
+    
     const body = schema.parse(req.body)
-    const user = await registerUser(body)
-    return reply.code(201).send(user)
+    
+    console.log('✅ [POST /users] Validado:', JSON.stringify(body, null, 2));
+    
+    // Registrar no userActivityTracker (com persistência)
+    await userActivityTracker.recordActivity(body.userId, body.pushToken)
+    
+    console.log('✅ [POST /users] Usuário registrado com sucesso!');
+    
+    return reply.code(201).send({
+      success: true,
+      userId: body.userId,
+      message: 'Usuário registrado com sucesso'
+    })
   })
 
   app.post('/alerts', async (req: any, reply: any) => {

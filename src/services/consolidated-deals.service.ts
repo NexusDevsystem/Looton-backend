@@ -46,6 +46,59 @@ async function fetchSpecials(cc: string, l: string) {
   return items
 }
 
+// Nova função: Buscar top sellers da Steam
+async function fetchTopSellers(cc: string, l: string) {
+  try {
+    const url = `https://store.steampowered.com/api/featuredcategories?cc=${cc}&l=${l}`
+    const res = await fetch(url)
+    if (!res.ok) return [] as any[]
+    const json = await res.json()
+    const topSellers: any[] = json?.top_sellers?.items ?? []
+    const newReleases: any[] = json?.new_releases?.items ?? []
+    // Combinar top sellers e lançamentos
+    return [...topSellers, ...newReleases]
+  } catch (error) {
+    console.error('Erro ao buscar top sellers:', error)
+    return []
+  }
+}
+
+// Nova função: Buscar jogos por tag/gênero
+async function fetchByTag(tag: string, cc: string, l: string, maxResults: number = 50) {
+  try {
+    // Usar a API de busca da Steam com filtro de tag
+    // Nota: Esta é uma implementação simplificada. A Steam não tem uma API pública oficial para isso
+    // mas podemos buscar na página de tags
+    const tagMap: Record<string, number> = {
+      'racing': 699,      // Racing tag ID
+      'action': 19,       // Action tag ID
+      'adventure': 21,    // Adventure tag ID
+      'rpg': 122,         // RPG tag ID
+      'strategy': 9,      // Strategy tag ID
+      'sports': 701,      // Sports tag ID
+      'indie': 492,       // Indie tag ID
+      'simulation': 599,  // Simulation tag ID
+    }
+    
+    const tagId = tagMap[tag.toLowerCase()]
+    if (!tagId) return []
+    
+    // Buscar jogos com essa tag usando a API de featured que suporta tags
+    const url = `https://store.steampowered.com/contenthub/querypaginated/specials/TopSellers/render/?query=&start=0&count=${maxResults}&cc=${cc}&l=${l}&v=4&tag=${tagId}`
+    const res = await fetch(url)
+    if (!res.ok) return []
+    
+    const json = await res.json()
+    const items = json?.results_html ? [] : [] // A API retorna HTML, precisaríamos parsear
+    
+    // Fallback: retornar vazio se não conseguir parsear
+    return []
+  } catch (error) {
+    console.error(`Erro ao buscar jogos por tag ${tag}:`, error)
+    return []
+  }
+}
+
 function centsToUnit(n?: number) { return typeof n === 'number' ? Math.round(n) / 100 : undefined }
 function clampPct(n?: number) {
   if (typeof n !== 'number' || Number.isNaN(n)) return undefined
@@ -224,27 +277,52 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
     return dailyDeals.slice(0, limit)
   }
 
-  // Caso contrário, usar o comportamento antigo
+  // Caso contrário, buscar de múltiplas fontes para ter um catálogo maior
   const cached = normalizedCache.get(ckey)
-  if (cached) return cached.slice(0, limit)
+  if (cached) {
+    console.log(`✅ Usando ${cached.length} deals do cache`)
+    return cached.slice(0, limit)
+  }
 
   try {
+    console.log(`🔍 Buscando deals de múltiplas fontes para ${cc}/${l}...`)
+    
+    // 1. Buscar specials (jogos em promoção especial)
     const specials = await fetchSpecials(cc, l)
-    // Obter também os jogos grátis da Epic Games
+    console.log(`📦 Specials: ${specials.length} itens`)
+    
+    // 2. Buscar top sellers e novos lançamentos
+    const topSellers = await fetchTopSellers(cc, l)
+    console.log(`🏆 Top Sellers + New Releases: ${topSellers.length} itens`)
+    
+    // 3. Obter jogos grátis da Epic Games
     let epicFreeGames: any[] = [];
     try {
       const epicDeals = await listFreeGames(l, cc, cc);
       epicFreeGames = epicDeals.map(deal => ({
         ...deal,
-        store: 'epic' // Marcar como proveniente da Epic
+        store: 'epic'
       }));
+      console.log(`🎮 Epic Free Games: ${epicFreeGames.length} itens`)
     } catch (epicError) {
       console.warn('Falha ao buscar ofertas da Epic Games:', epicError);
-      // Continuar sem dados da Epic se a API falhar
     }
     
+    // Combinar todas as fontes e remover duplicatas
+    const allItems = [...specials, ...topSellers]
+    const uniqueItems = new Map<number, any>()
+    
+    for (const item of allItems) {
+      if (item?.id && !uniqueItems.has(item.id)) {
+        uniqueItems.set(item.id, item)
+      }
+    }
+    
+    const combinedSpecials = Array.from(uniqueItems.values())
+    console.log(`✨ Total único após combinar fontes: ${combinedSpecials.length} itens`)
+    
     // Ordena por desconto desc para priorizar os melhores
-    specials.sort((a: any, b: any) => (b?.discount_percent || 0) - (a?.discount_percent || 0))
+    combinedSpecials.sort((a: any, b: any) => (b?.discount_percent || 0) - (a?.discount_percent || 0))
 
     // Converter os itens diretos de specials para ConsolidatedDeal
     // Estes itens já contêm dados de preço e desconto completos
@@ -253,7 +331,7 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
 
     
     // Processar ofertas da Steam
-    for (const item of specials) {
+    for (const item of combinedSpecials) {
       // Verificar campos obrigatórios
       if (!item?.id || !item?.name) continue
       
@@ -354,8 +432,12 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
       }
     }
 
-    if (consolidated.length > 0) normalizedCache.set(ckey, consolidated)
+    if (consolidated.length > 0) {
+      normalizedCache.set(ckey, consolidated)
+      console.log(`💾 Salvando ${consolidated.length} deals consolidados no cache`)
+    }
 
+    console.log(`✅ Retornando ${Math.min(consolidated.length, limit)} deals (de ${consolidated.length} disponíveis)`)
     return consolidated.slice(0, limit)
   } catch (error) {
     console.error('Erro ao buscar deals consolidadas:', error)

@@ -17,6 +17,9 @@ import priceHistoryRoutes from './price-history.routes.js'
 import epicRoutes from './epic.routes.js'
 import epicDetailsRoutes from './epic-details.js'
 import thumbRoutes from './thumb.js'
+import { testPushRoutes } from './test-push.routes.js'
+import testNotificationRoutes from './test-notification.routes.js'
+
 export default async function routes(app: FastifyInstance) {
   await app.register(dealsRoutes)
   await app.register(searchRoutes)
@@ -36,4 +39,6 @@ export default async function routes(app: FastifyInstance) {
   await app.register(epicRoutes)
   await app.register(epicDetailsRoutes)
   await app.register(thumbRoutes)
+  await app.register(testPushRoutes, { prefix: '/test' })
+  await app.register(testNotificationRoutes)
 }

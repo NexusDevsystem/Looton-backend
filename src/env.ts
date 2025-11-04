@@ -4,6 +4,7 @@ import { z } from 'zod'
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(3000),
+  API_BASE_URL: z.string().default('http://localhost:3000'),
   USE_REDIS: z.coerce.boolean().default(false),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   REDIS_REQUIRE_NOEVICTION: z.coerce.boolean().default(false),

@@ -1,11 +1,22 @@
-export async function registerUser(input: { email: string; pushToken?: string }) {
+import { userActivityTracker } from './user-activity.service.js'
+
+export async function registerUser(input: { userId?: string; email?: string; pushToken?: string }) {
+  // Usar userId se fornecido, senão gerar novo
+  const userId = input.userId || Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  
+  // Registrar no userActivityTracker para que receba notificações
+  if (input.pushToken) {
+    userActivityTracker.recordActivity(userId, input.pushToken);
+    console.log(`[AlertsService] Usuário ${userId} registrado no tracker com pushToken`);
+  }
+  
   // Implementação temporária sem banco de dados
   // Em um sistema real, você usaria um cache em memória ou outro sistema
   return {
     _doc: {
-      email: input.email,
+      email: input.email || `${userId}@looton.app`,
       pushToken: input.pushToken,
-      _id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+      _id: userId
     }
   }
 }

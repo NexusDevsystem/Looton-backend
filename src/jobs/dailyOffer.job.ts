@@ -1,5 +1,6 @@
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { userActivityTracker } from '../services/user-activity.service.js';
+import { env } from '../env.js';
 import cron from 'node-cron';
 
 const expo = new Expo();
@@ -18,7 +19,7 @@ const dailyOfferHistory: DailyOfferHistory[] = [];
 
 /**
  * Job que envia uma notificação diária com a melhor oferta do dia
- * Executa 2x por dia: 12h e 18h
+ * Executa 3x por dia: 12h, 16h e 18h
  */
 export async function runDailyOfferNotification() {
   try {
@@ -26,10 +27,18 @@ export async function runDailyOfferNotification() {
     
     // Detectar horário para personalizar mensagem
     const currentHour = new Date().getHours();
-    const isPeakTime = currentHour >= 18; // 18h ou depois
+    let notificationTitle = '🎮 Oferta do Dia!';
+    
+    if (currentHour >= 18) {
+      notificationTitle = '🌟 Oferta da Noite!';
+    } else if (currentHour >= 16) {
+      notificationTitle = '☀️ Oferta da Tarde!';
+    } else if (currentHour >= 12) {
+      notificationTitle = '🎮 Oferta do Dia!';
+    }
     
     // Obter todos os usuários ativos (que usaram o app nos últimos 30 dias)
-    const allUsers = userActivityTracker.getAllUsers();
+    const allUsers = await userActivityTracker.getAllUsers();
     const activeUsers = allUsers.filter(user => {
       const daysSinceActive = (Date.now() - user.lastActiveAt.getTime()) / (1000 * 60 * 60 * 24);
       return daysSinceActive <= 30 && user.pushToken;
@@ -48,12 +57,14 @@ export async function runDailyOfferNotification() {
       return;
     }
 
-    console.log(`[DailyOfferJob] Oferta selecionada: ${bestOffer.title} - ${bestOffer.discount}% OFF`);
+    // 🔥 VALIDAÇÃO EXTRA: Garantir que a oferta tem dados válidos antes de enviar
+    if (!bestOffer.title || !bestOffer.discount || !bestOffer.price || bestOffer.price === 0) {
+      console.error('[DailyOfferJob] ❌ Oferta inválida detectada! Não enviando notificação.');
+      console.error('[DailyOfferJob] Dados:', bestOffer);
+      return;
+    }
 
-    // Títulos personalizados por horário
-    const notificationTitle = isPeakTime 
-      ? '🌟 Oferta da Noite!' 
-      : '🎮 Oferta do Dia!';
+    console.log(`[DailyOfferJob] ✅ Oferta válida selecionada: ${bestOffer.title} - ${bestOffer.discount}% OFF - ${bestOffer.priceFormatted}`);
 
     // Criar mensagens para todos os tokens válidos
     const validTokens = activeUsers
@@ -142,18 +153,43 @@ export function getDailyOfferHistory(): DailyOfferHistory[] {
  */
 async function getBestOfferOfTheDay() {
   try {
-    // Buscar ofertas do endpoint /deals
-    const response = await fetch('http://localhost:3000/deals?limit=100');
+    // Buscar ofertas do endpoint /deals usando a URL do ambiente (Render em produção)
+    const response = await fetch(`${env.API_BASE_URL}/deals?limit=100`);
+    
+    if (!response.ok) {
+      console.error('[DailyOfferJob] Erro na API:', response.status, response.statusText);
+      return null;
+    }
+    
     const deals = await response.json();
 
     if (!deals || deals.length === 0) {
+      console.log('[DailyOfferJob] Nenhuma oferta retornada pela API');
       return null;
     }
 
+    console.log(`[DailyOfferJob] Total de ofertas recebidas: ${deals.length}`);
+
+    // Filtrar apenas ofertas válidas (com título, preço e desconto)
+    const validDeals = deals.filter((deal: any) => 
+      deal.game?.title && 
+      deal.priceFinal && 
+      deal.priceFinal > 0 && 
+      deal.discountPct && 
+      deal.discountPct > 0
+    );
+
+    if (validDeals.length === 0) {
+      console.log('[DailyOfferJob] Nenhuma oferta válida encontrada (sem título/preço/desconto)');
+      return null;
+    }
+
+    console.log(`[DailyOfferJob] Ofertas válidas: ${validDeals.length}`);
+
     // Calcular score: desconto * 0.6 + (1000 / preço) * 0.4
-    const scored = deals.map((deal: any) => ({
+    const scored = validDeals.map((deal: any) => ({
       ...deal,
-      score: (deal.discount || 0) * 0.6 + (1000 / (deal.price || 999)) * 0.4
+      score: (deal.discountPct || 0) * 0.6 + (1000 / (deal.priceFinal || 999)) * 0.4
     }));
 
     // Ordenar por score e pegar o melhor
@@ -161,14 +197,16 @@ async function getBestOfferOfTheDay() {
     
     const best = scored[0];
 
+    console.log(`[DailyOfferJob] Melhor oferta: ${best.game.title} - ${best.discountPct}% OFF - R$ ${best.priceFinal.toFixed(2)}`);
+
     return {
-      id: best.id,
-      title: best.title,
-      discount: best.discount || 0,
-      price: best.price,
-      priceFormatted: `R$ ${(best.price || 0).toFixed(2)}`,
-      store: best.store || 'Steam',
-      url: best.url || best.link
+      id: best._id || best.appId,
+      title: best.game.title,
+      discount: best.discountPct,
+      price: best.priceFinal,
+      priceFormatted: `R$ ${best.priceFinal.toFixed(2)}`,
+      store: best.store?.name || 'Steam',
+      url: best.url || ''
     };
   } catch (error) {
     console.error('[DailyOfferJob] Erro ao buscar ofertas:', error);
@@ -177,7 +215,7 @@ async function getBestOfferOfTheDay() {
 }
 
 /**
- * Inicia o cron job que executa 2x por dia (12h e 18h - horário de Brasília)
+ * Inicia o cron job que executa 3x por dia (12h, 16:10h e 18h - horário de Brasília)
  */
 export function startDailyOfferJob() {
   // Executa todos os dias às 12h (meio-dia)

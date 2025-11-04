@@ -79,6 +79,10 @@ export const redis: SimpleRedis | Redis = (() => {
 	return client
 })()
 
+export function getRedis(): SimpleRedis | Redis {
+	return redis
+}
+
 export async function deleteByPattern(pattern: string) {
 	let cursor = '0'
 	do {

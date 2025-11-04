@@ -1,6 +1,8 @@
 // Service para rastrear atividade de usuários e enviar notificações de reengajamento
 // Similar ao Duolingo - notifica quando usuário fica inativo
 
+import { userActivityPersistence } from './persistence/user-activity-persistence.service.js';
+
 interface UserActivity {
   userId: string;
   pushToken?: string;
@@ -11,24 +13,55 @@ interface UserActivity {
 
 class UserActivityTracker {
   private activities: Map<string, UserActivity> = new Map();
+  private isLoaded = false;
+  
+  /**
+   * Carregar dados do Redis na inicialização
+   */
+  async initialize(): Promise<void> {
+    if (this.isLoaded) return;
+    
+    console.log('[UserActivityTracker] 🔄 Carregando dados do Redis...');
+    const activities = await userActivityPersistence.loadAll();
+    
+    for (const activity of activities) {
+      this.activities.set(activity.userId, activity);
+    }
+    
+    this.isLoaded = true;
+    console.log(`[UserActivityTracker] ✅ Carregados ${activities.length} usuários do Redis`);
+  }
   
   // Registrar atividade do usuário
-  recordActivity(userId: string, pushToken?: string): void {
+  async recordActivity(userId: string, pushToken?: string): Promise<void> {
+    // Garantir que dados estão carregados
+    await this.initialize();
+    
     const existing = this.activities.get(userId);
     
-    this.activities.set(userId, {
+    const activity: UserActivity = {
       userId,
       pushToken: pushToken || existing?.pushToken,
       lastActiveAt: new Date(),
       notificationsSent: existing?.notificationsSent || 0,
       lastNotificationAt: existing?.lastNotificationAt,
+    };
+    
+    this.activities.set(userId, activity);
+    
+    // Salvar no Redis (async, não aguardar)
+    userActivityPersistence.save(activity).catch(err => {
+      console.error('[UserActivityTracker] Erro ao salvar no Redis:', err);
     });
     
     console.log(`[UserActivity] Registrada atividade para ${userId}`);
   }
   
   // Obter usuários inativos (não usaram o app há X dias)
-  getInactiveUsers(daysInactive: number = 3): UserActivity[] {
+  async getInactiveUsers(daysInactive: number = 3): Promise<UserActivity[]> {
+    // Garantir que dados estão carregados
+    await this.initialize();
+    
     const threshold = new Date();
     threshold.setDate(threshold.getDate() - daysInactive);
     
@@ -60,12 +93,15 @@ class UserActivityTracker {
   }
   
   // Marcar que notificação foi enviada
-  markNotificationSent(userId: string): void {
+  async markNotificationSent(userId: string): Promise<void> {
     const activity = this.activities.get(userId);
     if (!activity) return;
     
     activity.notificationsSent += 1;
     activity.lastNotificationAt = new Date();
+    
+    // Salvar no Redis
+    await userActivityPersistence.save(activity);
     
     console.log(`[UserActivity] Notificação enviada para ${userId} (total: ${activity.notificationsSent})`);
   }
@@ -113,18 +149,21 @@ class UserActivityTracker {
     return this.activities.get(userId);
   }
 
+  
   // Obter todos os usuários (para notificação diária)
-  getAllUsers(): UserActivity[] {
+  async getAllUsers(): Promise<UserActivity[]> {
+    // Garantir que dados estão carregados
+    await this.initialize();
+    
     return Array.from(this.activities.values());
   }
   
   // Limpar cache (útil para testes)
-  clear(): void {
+  async clear(): Promise<void> {
     this.activities.clear();
+    await userActivityPersistence.clear();
   }
-}
-
-// Singleton instance
+}// Singleton instance
 export const userActivityTracker = new UserActivityTracker();
 
 // Mensagens motivacionais estilo Duolingo - tom casual e amigável

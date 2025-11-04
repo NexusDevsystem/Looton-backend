@@ -8,7 +8,7 @@ export async function runReengagementJob() {
     console.log('[ReengagementJob] Iniciando verificação de usuários inativos...');
     
     // Buscar usuários inativos há 2 dias ou mais
-    const inactiveUsers = userActivityTracker.getInactiveUsers(2);
+    const inactiveUsers = await userActivityTracker.getInactiveUsers(2);
     
     if (inactiveUsers.length === 0) {
       console.log('[ReengagementJob] Nenhum usuário inativo encontrado');
@@ -55,7 +55,7 @@ export async function runReengagementJob() {
         
         if (result.data?.status === 'ok' || result.data?.id) {
           console.log(`[ReengagementJob] ✅ Notificação enviada para ${user.userId}`);
-          userActivityTracker.markNotificationSent(user.userId);
+          await userActivityTracker.markNotificationSent(user.userId);
         } else {
           console.warn(`[ReengagementJob] ⚠️ Falha ao enviar para ${user.userId}:`, result);
         }
