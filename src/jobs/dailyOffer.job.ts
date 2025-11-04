@@ -19,7 +19,7 @@ const dailyOfferHistory: DailyOfferHistory[] = [];
 
 /**
  * Job que envia uma notificação diária com a melhor oferta do dia
- * Executa 3x por dia: 12h, 16h e 18h
+ * Executa 2x por dia: 12h e 18h
  */
 export async function runDailyOfferNotification() {
   try {
@@ -215,20 +215,12 @@ async function getBestOfferOfTheDay() {
 }
 
 /**
- * Inicia o cron job que executa 3x por dia (12h, 16:10h e 18h - horário de Brasília)
+ * Inicia o cron job que executa 2x por dia (12h e 18h - horário de Brasília)
  */
 export function startDailyOfferJob() {
   // Executa todos os dias às 12h (meio-dia)
   cron.schedule('0 12 * * *', async () => {
     console.log('[DailyOfferJob] 🌅 Trigger às 12h (meio-dia) - executando...');
-    await runDailyOfferNotification();
-  }, {
-    timezone: 'America/Sao_Paulo'
-  });
-
-  // Executa todos os dias às 16:10h (meio da tarde)
-  cron.schedule('10 16 * * *', async () => {
-    console.log('[DailyOfferJob] ☀️ Trigger às 16:10h (meio da tarde) - executando...');
     await runDailyOfferNotification();
   }, {
     timezone: 'America/Sao_Paulo'
@@ -242,5 +234,5 @@ export function startDailyOfferJob() {
     timezone: 'America/Sao_Paulo'
   });
 
-  console.log('[DailyOfferJob] Job iniciado - executará 3x por dia: 12h, 16:10h e 18h (horário de Brasília)');
+  console.log('[DailyOfferJob] Job iniciado - executará 2x por dia: 12h e 18h (horário de Brasília)');
 }
