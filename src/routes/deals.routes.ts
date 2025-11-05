@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { fetchConsolidatedDeals } from '../services/consolidated-deals.service.js'
+import { filterInappropriateGames } from '../utils/content-filter.js'
 
 export default async function dealsRoutes(app: FastifyInstance) {
 
@@ -24,13 +25,17 @@ export default async function dealsRoutes(app: FastifyInstance) {
       
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       
+      // Filtrar conteúdo impróprio
+      const safeDeals = filterInappropriateGames(deals)
+      console.log(`🛡️ Deals filtrados: ${safeDeals.length} seguros de ${deals.length} total (${deals.length - safeDeals.length} removidos)`)
+      
       // Se não houver deals, retornar array vazio
-      if (deals.length === 0) {
+      if (safeDeals.length === 0) {
         return reply.send([])
       }
       
       // Converter os deals consolidados para o formato que o frontend espera
-      const formattedDeals = deals.map((deal: any) => {
+      const formattedDeals = safeDeals.map((deal: any) => {
         // Encontrar a loja com REALMENTE o menor preço válido
         const bestStore = deal.stores
           // Permitir preços 0 (gratuitos) e valores válidos não negativos

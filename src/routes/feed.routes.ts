@@ -3,6 +3,7 @@ import { getIntelligentFeed, enrichGameData, FeedParams } from '../services/inte
 import { servedGamesTracker } from '../services/served-games-cache.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { getCurrentFeed } from '../services/curate.js'
+import { filterInappropriateGames } from '../utils/content-filter.js'
 
 export default async function feedRoutes(app: FastifyInstance) {
   // Legacy curated feed endpoint (keep for compatibility)
@@ -47,13 +48,16 @@ export default async function feedRoutes(app: FastifyInstance) {
       const allOffers = [...steamGames];
       const allGames = allOffers.map(enrichGameData);
       
-      console.log(`Combined ${allGames.length} games from ${steamGames.length} Steam`);
+      // 🔒 FILTRAR CONTEÚDO IMPRÓPRIO
+      const safeGames = filterInappropriateGames(allGames);
+      
+      console.log(`Combined ${safeGames.length} safe games from ${steamGames.length} Steam (${allGames.length - safeGames.length} filtered)`);
 
       // Get served games for this user
       const servedGames = servedGamesTracker.getServedGames(feedParams.userId);
 
       // Generate intelligent feed
-      const result = await getIntelligentFeed(feedParams, allGames, servedGames);
+      const result = await getIntelligentFeed(feedParams, safeGames, servedGames);
       
       // Track served games
       if (result.items.length > 0) {

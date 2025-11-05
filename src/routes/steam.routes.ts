@@ -4,6 +4,7 @@ import { getTopDeals } from '../services/offers.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { fetchSteamFeatured, fetchSteamAppPrice } from '../services/steam-api.service.js'
 import { pickImageUrls } from '../utils/imageUtils.js'
+import { filterInappropriateGames } from '../utils/content-filter.js'
 
 export default async function steamRoutes(app: FastifyInstance) {
   // GET /steam/price/:appId - Preço real da Steam com fallback para packages/bundles
@@ -41,8 +42,12 @@ export default async function steamRoutes(app: FastifyInstance) {
       console.log('🔥 Buscando ofertas REAIS da Steam API...')
       const steamItems = await fetchSteamFeatured()
       
+      // Filtrar conteúdo impróprio antes do mapeamento
+      const safeItems = filterInappropriateGames(steamItems)
+      console.log(`🛡️ Steam featured filtrados: ${safeItems.length} seguros de ${steamItems.length} total`)
+      
       // Mapear para o formato esperado pelo frontend mobile
-      const steamDeals = steamItems.slice(0, limit || 50).map((item: any, index: number) => ({
+      const steamDeals = safeItems.slice(0, limit || 50).map((item: any, index: number) => ({
         appId: item.appId || item.packageId || item.bundleId || index,
         title: item.title || 'Jogo sem título',
         url: item.url,
@@ -73,12 +78,16 @@ export default async function steamRoutes(app: FastifyInstance) {
 
       // Call adapter directly (doesn't persist to DB here)
       const offers = await steamAdapter.search(q)
+      
+      // Filtrar conteúdo impróprio
+      const safeOffers = filterInappropriateGames(offers)
+      console.log(`🛡️ Steam search filtrados: ${safeOffers.length} seguros de ${offers.length} total`)
 
       // Try to enrich a subset of offers with real Steam prices to avoid heavy load
       const maxFetch = 8
       let fetched = 0
-      for (let i = 0; i < offers.length && fetched < maxFetch; i++) {
-        const o = offers[i]
+      for (let i = 0; i < safeOffers.length && fetched < maxFetch; i++) {
+        const o = safeOffers[i]
   const anyo = o as any
   const id = parseInt(String(anyo.storeAppId || anyo.id || anyo.appid || ''), 10)
         if (!Number.isNaN(id)) {
@@ -97,7 +106,7 @@ export default async function steamRoutes(app: FastifyInstance) {
       }
 
       // Map adapter OfferDTO[] to the frontend shape { games: [...] }
-      const games = offers.slice(0, lim).map((o: any) => {
+      const games = safeOffers.slice(0, lim).map((o: any) => {
         const priceFinal = o.priceFinal || 0
         const priceBase = o.priceBase || 0
         const imageUrls = pickImageUrls({ header_image: o.coverUrl })

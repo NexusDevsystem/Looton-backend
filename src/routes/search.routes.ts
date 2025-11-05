@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { listFreeGames } from '../integrations/epic/freeGames.js'
+import { filterInappropriateGames } from '../utils/content-filter.js'
 
 
 // Cache de busca por cc|l|q por 5 minutos
@@ -147,7 +148,11 @@ export default async function searchRoutes(app: FastifyInstance) {
       for (const x of out) {
         if (!uniq.has(x.id)) uniq.set(x.id, x)
       }
-      const enriched = Array.from(uniq.values())
+      let enriched = Array.from(uniq.values())
+      
+      // Filtrar conteúdo impróprio
+      enriched = filterInappropriateGames(enriched)
+      console.log(`🛡️ Search filtrado: ${enriched.length} resultados seguros`)
 
       // 4) Ordenação: match texto desc (exato > prefixo > resto), depois desconto desc, depois menor preço final
       const qLower = q.trim().toLowerCase()
