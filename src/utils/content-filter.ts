@@ -25,10 +25,12 @@ const BLOCKED_KEYWORDS = [
 // Gêneros/tags que frequentemente contêm conteúdo adulto
 const SUSPICIOUS_GENRES = [
   'adult',
+  'adult only',
   'hentai',
   'sexual content',
   'nudity',
-  'erotic'
+  'erotic',
+  'anime' // Bloquear todo conteúdo anime
 ];
 
 /**
