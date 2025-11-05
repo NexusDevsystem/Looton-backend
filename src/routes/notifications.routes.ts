@@ -217,4 +217,73 @@ export default async function notificationsRoutes(app: FastifyInstance) {
       })
     }
   })
+
+  // Endpoint de DEBUG para diagnóstico completo do sistema de notificações
+  app.get('/debug/notification-system', async (req: any, reply: any) => {
+    try {
+      // 1. Obter todos os usuários
+      const allUsers = await userActivityTracker.getAllUsers()
+      
+      // 2. Filtrar usuários ativos (últimos 30 dias)
+      const activeUsers = allUsers.filter(user => {
+        const daysSinceActive = (Date.now() - user.lastActiveAt.getTime()) / (1000 * 60 * 60 * 24)
+        return daysSinceActive <= 30
+      })
+      
+      // 3. Usuários com push token
+      const usersWithToken = activeUsers.filter(user => user.pushToken)
+      
+      // 4. Estatísticas
+      const stats = userActivityTracker.getStats()
+      
+      // 5. Histórico de ofertas enviadas
+      const history = getDailyOfferHistory()
+      
+      return reply.send({
+        timestamp: new Date().toISOString(),
+        system: {
+          totalUsers: allUsers.length,
+          activeUsers: activeUsers.length,
+          usersWithPushToken: usersWithToken.length,
+          stats
+        },
+        users: {
+          all: allUsers.map(u => ({
+            userId: u.userId,
+            hasPushToken: !!u.pushToken,
+            pushToken: u.pushToken ? `${u.pushToken.substring(0, 20)}...` : null,
+            lastActiveAt: u.lastActiveAt,
+            daysSinceActive: Math.floor((Date.now() - u.lastActiveAt.getTime()) / (1000 * 60 * 60 * 24)),
+            notificationsSent: u.notificationsSent,
+            lastNotificationAt: u.lastNotificationAt
+          })),
+          activeWithTokens: usersWithToken.map(u => ({
+            userId: u.userId,
+            pushToken: `${u.pushToken!.substring(0, 20)}...`,
+            lastActiveAt: u.lastActiveAt,
+            daysSinceActive: Math.floor((Date.now() - u.lastActiveAt.getTime()) / (1000 * 60 * 60 * 24))
+          }))
+        },
+        dailyOfferHistory: history,
+        recommendations: {
+          hasUsers: allUsers.length > 0,
+          hasActiveUsers: activeUsers.length > 0,
+          hasUsersWithTokens: usersWithToken.length > 0,
+          canSendNotifications: usersWithToken.length > 0,
+          issues: [
+            allUsers.length === 0 && 'Nenhum usuário registrado no sistema',
+            activeUsers.length === 0 && 'Nenhum usuário ativo nos últimos 30 dias',
+            usersWithToken.length === 0 && 'Nenhum usuário com push token registrado',
+            history.length === 0 && 'Nenhuma notificação foi enviada ainda'
+          ].filter(Boolean)
+        }
+      })
+    } catch (error) {
+      console.error('[DEBUG] Erro ao gerar diagnóstico:', error)
+      return reply.code(500).send({ 
+        success: false, 
+        error: String(error) 
+      })
+    }
+  })
 }
