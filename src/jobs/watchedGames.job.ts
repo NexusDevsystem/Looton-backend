@@ -27,6 +27,11 @@ const watchedGamesHistory: WatchedGameNotificationHistory[] = [];
 // Flag para controlar carregamento inicial
 let pricesCacheLoaded = false;
 
+// Flag para prevenir execução duplicada
+let isRunning = false;
+let lastExecutionTime: number = 0;
+const MIN_INTERVAL_MS = 60 * 1000; // Mínimo de 1 minuto entre execuções
+
 /**
  * Job que monitora jogos favoritos (vigiados) dos usuários
  * 
@@ -36,6 +41,21 @@ let pricesCacheLoaded = false;
  * Executa: A cada 1 hora
  */
 export async function runWatchedGamesNotification() {
+  // Prevenir execução duplicada
+  const now = Date.now();
+  if (isRunning) {
+    console.log('[WatchedGamesJob] ⏸️ Já está executando. Ignorando chamada duplicada.');
+    return;
+  }
+  
+  if (now - lastExecutionTime < MIN_INTERVAL_MS) {
+    console.log('[WatchedGamesJob] ⏸️ Executou há menos de 1 minuto. Ignorando chamada duplicada.');
+    return;
+  }
+  
+  isRunning = true;
+  lastExecutionTime = now;
+  
   try {
     console.log('[WatchedGamesJob] 🎮 Verificando jogos vigiados (a cada 1 hora)...');
     
@@ -138,6 +158,8 @@ export async function runWatchedGamesNotification() {
 
   } catch (error) {
     console.error('[WatchedGamesJob] Erro fatal:', error);
+  } finally {
+    isRunning = false;
   }
 }
 
@@ -286,7 +308,17 @@ export async function clearPriceCache() {
 /**
  * Inicia o cron job que executa A CADA 1 HORA
  */
+let cronJobsStarted = false;
+
 export function startWatchedGamesJob() {
+  // Prevenir múltiplos registros do cron job
+  if (cronJobsStarted) {
+    console.log('[WatchedGamesJob] ⚠️ Jobs já iniciados. Ignorando chamada duplicada.');
+    return;
+  }
+  
+  cronJobsStarted = true;
+  
   // Executa A CADA 1 HORA
   cron.schedule('0 * * * *', async () => {
     console.log('[WatchedGamesJob] ⏰ Verificação automática (a cada 1h)...');

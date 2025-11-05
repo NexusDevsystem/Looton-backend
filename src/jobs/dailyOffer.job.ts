@@ -17,11 +17,31 @@ interface DailyOfferHistory {
 // Histórico de notificações diárias (em memória)
 const dailyOfferHistory: DailyOfferHistory[] = [];
 
+// Flag para prevenir execução duplicada
+let isRunning = false;
+let lastExecutionTime: number = 0;
+const MIN_INTERVAL_MS = 60 * 1000; // Mínimo de 1 minuto entre execuções
+
 /**
  * Job que envia uma notificação diária com a melhor oferta do dia
  * Executa 2x por dia: 12h e 18h
  */
 export async function runDailyOfferNotification() {
+  // Prevenir execução duplicada
+  const now = Date.now();
+  if (isRunning) {
+    console.log('[DailyOfferJob] ⏸️ Já está executando. Ignorando chamada duplicada.');
+    return;
+  }
+  
+  if (now - lastExecutionTime < MIN_INTERVAL_MS) {
+    console.log('[DailyOfferJob] ⏸️ Executou há menos de 1 minuto. Ignorando chamada duplicada.');
+    return;
+  }
+  
+  isRunning = true;
+  lastExecutionTime = now;
+  
   try {
     console.log('[DailyOfferJob] Iniciando envio de Oferta do Dia...');
     
@@ -135,6 +155,8 @@ export async function runDailyOfferNotification() {
 
   } catch (error) {
     console.error('[DailyOfferJob] Erro fatal:', error);
+  } finally {
+    isRunning = false;
   }
 }
 
@@ -217,7 +239,17 @@ async function getBestOfferOfTheDay() {
 /**
  * Inicia o cron job que executa 2x por dia (12h e 18h - horário de Brasília)
  */
+let cronJobsStarted = false;
+
 export function startDailyOfferJob() {
+  // Prevenir múltiplos registros do cron job
+  if (cronJobsStarted) {
+    console.log('[DailyOfferJob] ⚠️ Jobs já iniciados. Ignorando chamada duplicada.');
+    return;
+  }
+  
+  cronJobsStarted = true;
+  
   // Executa todos os dias às 12h (meio-dia)
   cron.schedule('0 12 * * *', async () => {
     console.log('[DailyOfferJob] 🌅 Trigger às 12h (meio-dia) - executando...');
@@ -234,5 +266,5 @@ export function startDailyOfferJob() {
     timezone: 'America/Sao_Paulo'
   });
 
-  console.log('[DailyOfferJob] Job iniciado - executará 2x por dia: 12h e 18h (horário de Brasília)');
+  console.log('[DailyOfferJob] ✅ Job iniciado - executará 2x por dia: 12h e 18h (horário de Brasília)');
 }
