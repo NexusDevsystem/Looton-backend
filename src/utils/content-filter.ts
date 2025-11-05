@@ -5,21 +5,37 @@
 
 // Lista de palavras proibidas (case-insensitive)
 const BLOCKED_KEYWORDS = [
-  // Conteúdo sexual/adulto
-  'sex', 'sexy', 'hentai', 'porn', 'milf', 'xxx', 'nude', 'naked', 'ecchi',
-  'erotic', 'adult only', '18+', 'nsfw', 'lewd', 'seductive', 'bikini babes',
+  // Conteúdo sexual/adulto - Variações de SEX
+  'sex', 'sexy', 'sexual', 'sexo', 'sexi', 'seks', 'sexe', 'sexs',
   
-  // Variações em português
-  'sexo', 'sexual', 'erótico', 'adulto', 'nudez', 'pelad',
+  // Pornografia e termos adultos
+  'porn', 'porno', 'pornô', 'pornografia', 'xxx', 'adult only', '18+',
   
-  // Tags Steam adultas
-  'sexual content', 'nudity', 'mature', 'anime girls',
+  // Nudez e exposição
+  'nude', 'naked', 'nudity', 'nudez', 'pelad', 'pelado', 'pelada',
+  'strip', 'stripper', 'bikini babes', 'underwear',
   
-  // Palavras compostas comuns
+  // Hentai e anime adulto
+  'hentai', 'ecchi', 'ahegao', 'waifu', 'anime girls',
+  
+  // Termos eróticos
+  'erotic', 'erótico', 'erotica', 'lewd', 'seductive', 'sensual',
+  
+  // Termos sexuais específicos
+  'milf', 'dilf', 'bdsm', 'fetish', 'kink', 'lust', 'orgasm',
+  
+  // Dating e romance adulto
   'hot girls', 'sexy girls', 'dating sim', 'visual novel',
+  'girlfriend', 'boyfriend', 'lovers', 'romance',
   
-  // Outros termos problemáticos
-  'gore', 'extreme violence', 'torture'
+  // Marcadores de conteúdo adulto
+  'nsfw', 'mature', 'explicit', 'censored', 'uncensored',
+  
+  // Jogos/marcas específicas bloqueadas
+  'achat', 'hunie', 'nekopara', 'mirror',
+  
+  // Violência extrema
+  'gore', 'extreme violence', 'torture', 'blood bath'
 ];
 
 // Gêneros/tags que frequentemente contêm conteúdo adulto
@@ -39,13 +55,37 @@ const SUSPICIOUS_GENRES = [
 function containsBlockedKeyword(text: string): boolean {
   if (!text) return false;
   
-  const normalizedText = text.toLowerCase();
+  const normalizedText = text.toLowerCase().trim();
   
   return BLOCKED_KEYWORDS.some(keyword => {
-    // Busca palavra completa ou parte de palavra composta
-    const regex = new RegExp(`\\b${keyword}\\b|${keyword}`, 'i');
-    return regex.test(normalizedText);
+    const normalizedKeyword = keyword.toLowerCase();
+    
+    // Verificação 1: Palavra exata (case-insensitive)
+    if (normalizedText === normalizedKeyword) {
+      return true;
+    }
+    
+    // Verificação 2: Palavra completa com limites de palavra (word boundaries)
+    const wordBoundaryRegex = new RegExp(`\\b${escapeRegex(normalizedKeyword)}\\b`, 'i');
+    if (wordBoundaryRegex.test(normalizedText)) {
+      return true;
+    }
+    
+    // Verificação 3: Substring (para detectar em palavras compostas)
+    // Exemplo: "SEXO AEREO" contém "SEX"
+    if (normalizedText.includes(normalizedKeyword)) {
+      return true;
+    }
+    
+    return false;
   });
+}
+
+/**
+ * Escapa caracteres especiais de regex
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
