@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { listFreeGames } from '../integrations/epic/freeGames.js'
-import { filterInappropriateGames } from '../utils/content-filter.js'
+import { filterNSFWGames } from '../utils/nsfw-shield.js'
 
 
 // Cache de busca por cc|l|q por 5 minutos
@@ -150,8 +150,8 @@ export default async function searchRoutes(app: FastifyInstance) {
       }
       let enriched = Array.from(uniq.values())
       
-      // Filtrar conteúdo impróprio
-      enriched = filterInappropriateGames(enriched)
+      // Filtrar conteúdo impróprio com NSFW Shield
+      enriched = filterNSFWGames(enriched)
       console.log(`🛡️ Search filtrado: ${enriched.length} resultados seguros`)
 
       // 4) Ordenação: match texto desc (exato > prefixo > resto), depois desconto desc, depois menor preço final

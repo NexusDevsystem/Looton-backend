@@ -4,7 +4,7 @@ import { getTopDeals } from '../services/offers.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { fetchSteamFeatured, fetchSteamAppPrice } from '../services/steam-api.service.js'
 import { pickImageUrls } from '../utils/imageUtils.js'
-import { filterInappropriateGames } from '../utils/content-filter.js'
+import { filterNSFWGames } from '../utils/nsfw-shield.js'
 
 export default async function steamRoutes(app: FastifyInstance) {
   // GET /steam/price/:appId - Preço real da Steam com fallback para packages/bundles
@@ -42,8 +42,8 @@ export default async function steamRoutes(app: FastifyInstance) {
       console.log('🔥 Buscando ofertas REAIS da Steam API...')
       const steamItems = await fetchSteamFeatured()
       
-      // Filtrar conteúdo impróprio antes do mapeamento
-      const safeItems = filterInappropriateGames(steamItems)
+      // Filtrar conteúdo impróprio com NSFW Shield
+      const safeItems = filterNSFWGames(steamItems)
       console.log(`🛡️ Steam featured filtrados: ${safeItems.length} seguros de ${steamItems.length} total`)
       
       // Mapear para o formato esperado pelo frontend mobile
@@ -79,8 +79,8 @@ export default async function steamRoutes(app: FastifyInstance) {
       // Call adapter directly (doesn't persist to DB here)
       const offers = await steamAdapter.search(q)
       
-      // Filtrar conteúdo impróprio
-      const safeOffers = filterInappropriateGames(offers)
+      // Filtrar conteúdo impróprio com NSFW Shield
+      const safeOffers = filterNSFWGames(offers)
       console.log(`🛡️ Steam search filtrados: ${safeOffers.length} seguros de ${offers.length} total`)
 
       // Try to enrich a subset of offers with real Steam prices to avoid heavy load
