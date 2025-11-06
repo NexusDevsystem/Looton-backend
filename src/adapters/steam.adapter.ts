@@ -4,8 +4,43 @@ import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 // Cache curto por região/idioma (5 minutos)
 const specialsCache = new MemoryCache<string, OfferDTO[]>(ttlSecondsToMs(300))
 
+// Cache para detalhes de apps (incluindo genres/categories)
+const appDetailsCache = new MemoryCache<string, any>(ttlSecondsToMs(3600)) // 1 hora
+
 function key(cc: string, l: string) {
   return `${cc}|${l}`.toLowerCase()
+}
+
+/**
+ * Busca detalhes completos de um app na Steam, incluindo gêneros e categorias oficiais
+ */
+async function fetchAppDetails(appId: string, cc: string = 'BR', l: string = 'pt-BR'): Promise<{ genres: string[], categories: string[] } | null> {
+  const cacheKey = `${appId}:${cc}:${l}`
+  
+  // Verificar cache primeiro
+  const cached = appDetailsCache.get(cacheKey)
+  if (cached) return cached
+  
+  try {
+    const response = await fetch(`https://store.steampowered.com/api/appdetails/?appids=${appId}&cc=${cc}&l=${l}`)
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    const appData = data[appId]
+    
+    if (!appData?.success || !appData.data) return null
+    
+    const genres = (appData.data.genres || []).map((g: any) => g?.description || '').filter(Boolean)
+    const categories = (appData.data.categories || []).map((c: any) => c?.description || '').filter(Boolean)
+    
+    const result = { genres, categories }
+    appDetailsCache.set(cacheKey, result)
+    
+    return result
+  } catch (error) {
+    console.warn(`⚠️ Erro ao buscar detalhes do app ${appId}:`, error)
+    return null
+  }
 }
 
 export const steamAdapter: StoreAdapter = {
@@ -43,6 +78,12 @@ export const steamAdapter: StoreAdapter = {
         const isAssassinBlackFlagGolden = titleLower.includes('assassin\'s creed black flag') && titleLower.includes('golden edition');
         
         if (!isAssassinBlackFlagGolden) {
+          // Buscar categorias e gêneros oficiais da Steam
+          const details = await fetchAppDetails(String(it.id), cc, l)
+          const genres = details?.genres || []
+          const categories = details?.categories || []
+          const allTags = [...new Set([...genres, ...categories])]
+          
           const offer: OfferDTO = {
             store: 'steam',
             storeAppId: String(it.id),
@@ -56,8 +97,8 @@ export const steamAdapter: StoreAdapter = {
             currency: 'BRL',
             isActive: true,
             coverUrl: it.header_image || '',
-            genres: [],
-            tags: []
+            genres: allTags,
+            tags: allTags
           }
           offers.push(offer)
         }
@@ -130,6 +171,11 @@ export const steamAdapter: StoreAdapter = {
           const isAssassinBlackFlagGolden = titleLower.includes('assassin\'s creed black flag') && titleLower.includes('golden edition');
           
           if (!isAssassinBlackFlagGolden) {
+            // Extrair gêneros e categorias do appdetails que já foi buscado
+            const genres = (gameData.data.genres || []).map((g: any) => g?.description || '').filter(Boolean)
+            const categories = (gameData.data.categories || []).map((c: any) => c?.description || '').filter(Boolean)
+            const allTags = [...new Set([...genres, ...categories])]
+            
             const offer: OfferDTO = {
               store: 'steam',
               storeAppId: String(item.id),
@@ -143,12 +189,12 @@ export const steamAdapter: StoreAdapter = {
               currency: 'BRL',
               isActive: true,
               coverUrl: gameData.data.header_image || item.tiny_image || '',
-              genres: [],
-              tags: []
+              genres: allTags,
+              tags: allTags
             }
             
             offers.push(offer)
-            console.log(`✅ Encontrado: ${offer.title} - R${offer.priceFinal}`)
+            console.log(`✅ Encontrado: ${offer.title} - R${offer.priceFinal} | Gêneros: ${allTags.join(', ') || 'N/A'}`)
           }
         } catch (err) {
           console.warn(`Erro ao processar ${item.name}:`, err)

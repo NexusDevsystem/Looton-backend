@@ -109,6 +109,22 @@ const SUSPICIOUS_GENRES = [
 ];
 
 /**
+ * Categorias ABSOLUTAMENTE BLOQUEADAS - sem exceções
+ * Estes gêneros são SEMPRE bloqueados, mesmo se o jogo estiver na whitelist
+ */
+const ABSOLUTE_BLOCKED_CATEGORIES = [
+  'adult only',
+  'adult',
+  'anime',
+  'hentai',
+  'sexual content',
+  'nudity',
+  'nsfw',
+  'mature content',
+  'erotic'
+];
+
+/**
  * Verifica se o jogo está na lista de exceções (jogos legítimos permitidos)
  */
 function isAllowedGame(title: string): boolean {
@@ -162,6 +178,30 @@ function escapeRegex(str: string): string {
 }
 
 /**
+ * Verifica se as tags/gêneros contêm categorias ABSOLUTAMENTE bloqueadas
+ * Estas categorias são bloqueadas MESMO se o jogo estiver na whitelist
+ */
+function hasAbsoluteBlockedCategories(genres: string[]): boolean {
+  if (!genres || genres.length === 0) return false;
+  
+  const normalizedGenres = genres.map(g => g.toLowerCase().trim());
+  
+  const hasBlocked = ABSOLUTE_BLOCKED_CATEGORIES.some(blocked => 
+    normalizedGenres.some(genre => {
+      const normalizedBlocked = blocked.toLowerCase();
+      // Verifica se o gênero contém ou é exatamente a categoria bloqueada
+      return genre === normalizedBlocked || genre.includes(normalizedBlocked);
+    })
+  );
+  
+  if (hasBlocked) {
+    console.log(`🚫 CATEGORIA ABSOLUTAMENTE BLOQUEADA detectada em: ${genres.join(', ')}`);
+  }
+  
+  return hasBlocked;
+}
+
+/**
  * Verifica se as tags/gêneros contêm conteúdo suspeito
  */
 function hasSuspiciousGenres(genres: string[]): boolean {
@@ -179,8 +219,16 @@ function hasSuspiciousGenres(genres: string[]): boolean {
  */
 export function isGameAppropriate(game: any): boolean {
   const gameTitle = game.title || game.name || game.game?.title || '';
+  const genres = game.genres || game.tags || game.game?.genres || [];
   
-  // PRIMEIRO: Verificar se é um jogo permitido (exceção)
+  // PRIORIDADE MÁXIMA: Bloquear categorias absolutas (Adult Only, Anime, etc)
+  // Estas categorias são bloqueadas MESMO se o jogo estiver na whitelist
+  if (hasAbsoluteBlockedCategories(genres)) {
+    console.log(`🚫 BLOQUEIO ABSOLUTO: ${gameTitle} - Categoria proibida: ${genres.join(', ')}`);
+    return false;
+  }
+  
+  // SEGUNDO: Verificar se é um jogo permitido (exceção)
   if (isAllowedGame(gameTitle)) {
     console.log(`✅ Jogo permitido (exceção): ${gameTitle}`);
     return true;
@@ -198,8 +246,7 @@ export function isGameAppropriate(game: any): boolean {
     return false;
   }
   
-  // Verificar tags/gêneros
-  const genres = game.genres || game.tags || game.game?.genres || [];
+  // Verificar tags/gêneros suspeitos
   if (hasSuspiciousGenres(genres)) {
     console.log(`🚫 Bloqueado por gênero: ${gameTitle} - ${genres.join(', ')}`);
     return false;
