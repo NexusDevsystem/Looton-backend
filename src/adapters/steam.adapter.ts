@@ -12,9 +12,15 @@ function key(cc: string, l: string) {
 }
 
 /**
- * Busca detalhes completos de um app na Steam, incluindo gêneros e categorias oficiais
+ * Busca detalhes completos de um app na Steam, incluindo gêneros, categorias, tags e dados de conteúdo
  */
-async function fetchAppDetails(appId: string, cc: string = 'BR', l: string = 'pt-BR'): Promise<{ genres: string[], categories: string[] } | null> {
+async function fetchAppDetails(appId: string, cc: string = 'BR', l: string = 'pt-BR'): Promise<{ 
+  genres: string[], 
+  categories: string[], 
+  tags: string[],
+  required_age?: number,
+  content_descriptors?: string[]
+} | null> {
   const cacheKey = `${appId}:${cc}:${l}`
   
   // Verificar cache primeiro
@@ -30,10 +36,32 @@ async function fetchAppDetails(appId: string, cc: string = 'BR', l: string = 'pt
     
     if (!appData?.success || !appData.data) return null
     
-    const genres = (appData.data.genres || []).map((g: any) => g?.description || '').filter(Boolean)
-    const categories = (appData.data.categories || []).map((c: any) => c?.description || '').filter(Boolean)
+    const gameData = appData.data
     
-    const result = { genres, categories }
+    const genres = (gameData.genres || []).map((g: any) => g?.description || '').filter(Boolean)
+    const categories = (gameData.categories || []).map((c: any) => c?.description || '').filter(Boolean)
+    
+    // Tags da Steam (se disponível)
+    const tags: string[] = []
+    if (gameData.genres) {
+      tags.push(...genres) // Gêneros também são tags
+    }
+    if (gameData.categories) {
+      // Algumas categorias são tags importantes (ex: "Single-player", "Multi-player")
+      tags.push(...categories)
+    }
+    
+    // Dados de conteúdo para NSFW Shield
+    const required_age = gameData.required_age || 0
+    const content_descriptors = gameData.content_descriptors?.ids || []
+    
+    const result = { 
+      genres, 
+      categories, 
+      tags,
+      required_age,
+      content_descriptors
+    }
     appDetailsCache.set(cacheKey, result)
     
     return result
@@ -102,6 +130,39 @@ export const steamAdapter: StoreAdapter = {
 
       // Ordenar: maior desconto primeiro, depois menor preço
       offers.sort((a, b) => ((b.discountPct ?? 0) - (a.discountPct ?? 0)) || (a.priceFinal - b.priceFinal))
+
+      // 🚀 ENRIQUECIMENTO: Buscar dados oficiais (genres/categories) em BATCH
+      console.log(`📊 Enriquecendo ${offers.length} ofertas com dados oficiais da Steam...`)
+      
+      // Processar em batches de 15 jogos (evitar timeout)
+      const BATCH_SIZE = 15
+      for (let i = 0; i < offers.length; i += BATCH_SIZE) {
+        const batch = offers.slice(i, i + BATCH_SIZE)
+        
+        // Buscar detalhes em paralelo para o batch
+        const detailsPromises = batch.map(offer => 
+          fetchAppDetails(offer.storeAppId, cc, l)
+            .catch(err => {
+              console.warn(`⚠️ Erro ao buscar detalhes de ${offer.title}:`, err.message)
+              return null
+            })
+        )
+        
+        const detailsResults = await Promise.all(detailsPromises)
+        
+        // Aplicar resultados ao batch
+        batch.forEach((offer, idx) => {
+          const details = detailsResults[idx]
+          if (details) {
+            offer.genres = details.genres || []
+            offer.tags = details.tags || [] // Agora usa tags, não categories
+            offer.required_age = details.required_age || 0
+            offer.content_descriptors = details.content_descriptors || []
+          }
+        })
+        
+        console.log(`✅ Batch ${Math.floor(i / BATCH_SIZE) + 1} enriquecido (${batch.length} jogos)`)
+      }
 
       // Cache curto
       specialsCache.set(cacheKey, offers)

@@ -15,6 +15,10 @@ export type OfferDTO = {
   coverUrl?: string
   genres?: string[]
   tags?: string[]
+  
+  // NSFW Shield: Dados oficiais da Steam/Epic
+  required_age?: number
+  content_descriptors?: string[]
 }
 
 export interface StoreAdapter {
