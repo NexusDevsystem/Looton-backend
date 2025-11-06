@@ -21,15 +21,26 @@ export type GameDoc = {
 const BANNED_TAGS = new Set([
   "adult only", "nsfw", "hentai", "eroge", "ecchi", "sexual content", "nudity",
   "nude", "erotic", "porn", "r18", "uncensored", "yaoi", "yuri", "tentacle",
-  "visual novel", "dating sim", "romance simulation", "bishoujo", "galgame"
+  "visual novel", "dating sim", "romance simulation", "bishoujo", "galgame",
+  "anime" // Bloquear jogos com tag Anime
+]);
+
+// Palavras BANIDAS no TÍTULO (bloqueio imediato)
+const BANNED_TITLE_WORDS = new Set([
+  "demon love", "demonlove", "wish island", "wishisland",
+  "milk", "milf", "anime girl", "anime girls", "anime woman", "anime women",
+  "hentai", "ecchi", "hunie", "nekopara", "mirror", "fresh", "freshwomen",
+  "achat", "honey select", "koikatsu", "illusion", "seduction", "love island",
+  "waifu", "oppai", "boob", "boobs", "sexy", "strip", "stripper"
 ]);
 
 // Regex para detectar palavras/expressões fortes (pt/en/ja)
 const KEYWORD_REGEX = new RegExp(
   String.raw`(?:adult only|adults only|r18|r-18|18\+|nsfw|hentai|eroge|ecchi|porn|pornographic|` +
   String.raw`sexual content|sexualized|explicit sex|sex scene|sex scenes|erotic|lewd|` +
-  String.raw`uncensored|nude|nudity|full nudity|partial nudity|boobs|breasts|` +
+  String.raw`uncensored|nude|nudity|full nudity|partial nudity|boobs|breasts|milk|milf|` +
   String.raw`yaoi|yuri|tentacle|incest|fetish|strip|striptease|fanservice|sensual|provocative|` +
+  String.raw`demon love|wish island|anime girl|anime woman|waifu|oppai|` +
   String.raw`conteúdo sexual|sexo explícito|nudez|nudidade|conteúdo adulto|erótico|pornográfico|` +
   String.raw`乳首|裸|エロ)`,
   "i"
@@ -94,6 +105,23 @@ function ratingSignals(ratings?: { system: "ESRB"|"PEGI"; labels: string[] }[]) 
  */
 export function decideNSFW(app: GameDoc): { blocked: boolean; reasons: string[] } {
   const reasons: string[] = [];
+
+  // ========================================
+  // CAMADA 0: Verificação IMEDIATA de título
+  // ========================================
+  
+  const titleLower = (app.title || '').toLowerCase().trim();
+  
+  // Verificar palavras banidas no título
+  for (const banned of BANNED_TITLE_WORDS) {
+    if (titleLower.includes(banned)) {
+      reasons.push(`title_blocked: "${banned}"`);
+      // Retorna imediatamente se encontrar palavra banida no título
+      console.log(`🚫 NSFW Shield BLOQUEOU (TÍTULO): ${app.title}`);
+      console.log(`   Motivo: Palavra banida no título: "${banned}"`);
+      return { blocked: true, reasons };
+    }
+  }
 
   // ========================================
   // CAMADA 1: Sinais OFICIAIS (Steam/Epic)
