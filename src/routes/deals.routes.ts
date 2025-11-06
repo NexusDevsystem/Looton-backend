@@ -25,8 +25,9 @@ export default async function dealsRoutes(app: FastifyInstance) {
       
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       
-      // Filtrar conteúdo impróprio
-      const safeDeals = filterInappropriateGames(deals)
+      // FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
+      // const safeDeals = filterInappropriateGames(deals)
+      const safeDeals = deals // SEM FILTRO
       console.log(`🛡️ Deals filtrados: ${safeDeals.length} seguros de ${deals.length} total (${deals.length - safeDeals.length} removidos)`)
       
       // Se não houver deals, retornar array vazio

@@ -48,8 +48,9 @@ export default async function feedRoutes(app: FastifyInstance) {
       const allOffers = [...steamGames];
       const allGames = allOffers.map(enrichGameData);
       
-      // 🔒 FILTRAR CONTEÚDO IMPRÓPRIO
-      const safeGames = filterInappropriateGames(allGames);
+      // 🔒 FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
+      // const safeGames = filterInappropriateGames(allGames);
+      const safeGames = allGames; // SEM FILTRO
       
       console.log(`Combined ${safeGames.length} safe games from ${steamGames.length} Steam (${allGames.length - safeGames.length} filtered)`);
 

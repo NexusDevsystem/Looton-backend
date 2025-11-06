@@ -436,8 +436,9 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
 
     console.log(`📦 Total consolidado ANTES do filtro: ${consolidated.length} itens`)
     
-    // 🛡️ FILTRAR CONTEÚDO IMPRÓPRIO
-    const safeConsolidated = filterInappropriateGames(consolidated)
+    // 🛡️ FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
+    // const safeConsolidated = filterInappropriateGames(consolidated)
+    const safeConsolidated = consolidated // SEM FILTRO
     console.log(`🛡️ Total consolidado APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
 
     if (safeConsolidated.length > 0) {
@@ -649,8 +650,9 @@ async function generateEligiblePool(cc: string, l: string): Promise<Consolidated
 
   console.log(`📦 Pool ANTES do filtro: ${consolidated.length} itens`)
   
-  // 🛡️ FILTRAR CONTEÚDO IMPRÓPRIO
-  const safeConsolidated = filterInappropriateGames(consolidated)
+  // 🛡️ FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
+  // const safeConsolidated = filterInappropriateGames(consolidated)
+  const safeConsolidated = consolidated // SEM FILTRO
   console.log(`🛡️ Pool APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
   console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${safeConsolidated.length} itens)`)
 
