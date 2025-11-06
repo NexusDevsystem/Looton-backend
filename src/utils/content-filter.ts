@@ -33,7 +33,7 @@ const BLOCKED_KEYWORDS = [
   
   // Jogos/marcas específicas bloqueadas
   'achat', 'hunie', 'nekopara', 'mirror',
-  'freshwomen', 'fresh women', 'freshwoman', 'fresh woman',
+  'fresh', 'freshwomen', 'fresh women', 'freshwoman', 'fresh woman',
   
   // Violência extrema
   'gore', 'extreme violence', 'torture', 'blood bath'
