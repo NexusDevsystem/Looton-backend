@@ -34,59 +34,16 @@ const BLOCKED_KEYWORDS = [
   // Jogos/marcas específicas bloqueadas
   'achat', 'hunie', 'nekopara', 'mirror',
   'fresh', 'freshwomen', 'fresh women', 'freshwoman', 'fresh woman',
+  'demon love', 'demonlove', 'demon wish', 'wish island',
   
-  // Palavras relacionadas a mulheres que frequentemente indicam conteúdo adulto
-  'woman', 'women', 'lady', 'ladies', 'female', 'fem', 'feminine', 'feminine wiles', 'female warrior',
-  'naughty woman', 'naughty women', 'sexy woman', 'sexy women', 'hot woman', 'hot women',
-  'busty woman', 'busty women', 'curvy woman', 'curvy women', 'slim woman', 'slim women',
-  'bachelor', 'bachelor party', 'bachelor life', 'bachelor game',
-  'housewives', 'house wife', 'house wife life', 'house wife game',
-  'mother', 'mom', 'moms', 'mother game', 'mom game', 'mommy game',
-  'daughter', 'daughter game', 'family', 'family game', 'family life',
-  'maid', 'maid game', 'maids', 'maid life', 'maid simulator',
-  'nurse', 'nurse game', 'doctors and nurses', 'hospital game',
-  'teacher', 'teacher game', 'student teacher', 'school girl', 'school life',
+  // Dating/Romance games adultos (combinações específicas)
+  'love game', 'love story', 'love island', 'love simulator',
+  'romance game', 'romantic game',
+  'dating game', 'date sim', 'dating simulator',
+  'visual novel',
   
-  // Variações em outros idiomas
-  'mulher', 'mulheres', 'senhora', 'senhoras', 'feminina', 'feminino', 'mulherada',
-  'frau', 'frauen', 'donna', 'donne', 'femme', 'femmes', 'mujer', 'mujeres',
-  'femme', 'femminile', 'feminino', 'feminina', 'donna', 'fille', 'filles',
-  'girl', 'girls', 'young woman', 'young women', 'adult woman', 'adult women',
-  'wife', 'wives', 'bride', 'brides', 'babe', 'babes', 'chick', 'chicks',
-  'babe game', 'babe life', 'chick game', 'chick life',
-  
-  // Termos em contextos potencialmente adultos
-  'nurse', 'nurses', 'teacher', 'teachers', 'maid', 'maids', 'maidens', 'school',
-  'school girl', 'school girls', 'student', 'students', 'teacher student',
-  'housewife', 'housewives', 'mom', 'moms', 'mother', 'mothers', 'mommy',
-  'daughter', 'daughters', 'family', 'family life', 'step', 'stepsis',
-  'stepsister', 'stepbrother', 'bff', 'bffs', 'best friend', 'bestfriends',
-  'beach', 'beach babe', 'beach babes', 'pool', 'pool babe', 'pool babes',
-  'vacation', 'vacation babe', 'vacation babes', 'trip', 'trip babe', 'trip babes',
-  
-  // Termos relacionados a conteúdos eróticos/sugestivos
-  'milk', 'milky', 'lactation', 'lactating', 'breast', 'breasts', 'boob', 'boobs',
-  'tits', 'titties', 'ass', 'asses', 'butt', 'butts', 'thick', 'thick girl', 'thick girls',
-  'curvy', 'curves', 'busty', 'bust', 'hot', 'hot girl', 'hot girls', 'naughty',
-  'naughty girl', 'naughty girls', 'seductive', 'seduce', 'seduction',
-  'erotic', 'erotic game', 'erotic life', 'erotic sim', 'erotic simulation',
-  'lust', 'lustful', 'naughty nurse', 'sexy nurse', 'hot nurse',
-  'adult only', 'adult game', 'adult content', 'mature content', 'mature game',
-  
-  // Termos relacionados a conteúdos eróticos/sugestivos
-  'milk', 'milky', 'lactation', 'lactating', 'breast', 'breasts', 'boob', 'boobs',
-  'tits', 'titties', 'ass', 'asses', 'butt', 'butts', 'thick', 'thick girl', 'thick girls',
-  'curvy', 'curves', 'busty', 'bust', 'hot', 'hot girl', 'hot girls', 'naughty',
-  'naughty girl', 'naughty girls', 'seductive', 'seduce', 'seduction',
-  'erotic', 'erotic game', 'erotic life', 'erotic sim', 'erotic simulation',
-  'lust', 'lustful', 'naughty nurse', 'sexy nurse', 'hot nurse',
-  'adult only', 'adult game', 'adult content', 'mature content', 'mature game',
-
   // Violência extrema
-  'gore', 'extreme violence', 'torture', 'blood bath',
-
-  // Jogo específico a ser bloqueado
-  'Shoot! & Ahhhhh~'
+  'gore', 'extreme violence', 'torture', 'blood bath'
 ];
 
 // Gêneros/tags que frequentemente contêm conteúdo adulto
