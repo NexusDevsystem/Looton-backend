@@ -78,12 +78,8 @@ export const steamAdapter: StoreAdapter = {
         const isAssassinBlackFlagGolden = titleLower.includes('assassin\'s creed black flag') && titleLower.includes('golden edition');
         
         if (!isAssassinBlackFlagGolden) {
-          // Buscar categorias e gêneros oficiais da Steam
-          const details = await fetchAppDetails(String(it.id), cc, l)
-          const genres = details?.genres || []
-          const categories = details?.categories || []
-          const allTags = [...new Set([...genres, ...categories])]
-          
+          // Criar oferta SEM buscar detalhes (para velocidade)
+          // Detalhes serão buscados apenas quando necessário (ex: ao abrir o jogo)
           const offer: OfferDTO = {
             store: 'steam',
             storeAppId: String(it.id),
@@ -97,8 +93,8 @@ export const steamAdapter: StoreAdapter = {
             currency: 'BRL',
             isActive: true,
             coverUrl: it.header_image || '',
-            genres: allTags,
-            tags: allTags
+            genres: [], // Será preenchido por consolidated-deals.service.ts
+            tags: []    // Será preenchido por consolidated-deals.service.ts
           }
           offers.push(offer)
         }
