@@ -2,7 +2,9 @@ import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { shuffleWithSeed, stringToSeed } from '../utils/seedable-prng.js'
 import { listFreeGames } from '../integrations/epic/freeGames.js'
 import { filterNSFWGamesAsync } from '../utils/nsfw-shield.js'
-import { itadAdapter } from '../adapters/itad.adapter.js'
+import { steamAdapter } from '../adapters/steam.adapter.js'
+import { epicAdapter } from '../adapters/epic.adapter.js'
+// import { itadAdapter } from '../adapters/itad.adapter.js' // REMOVIDO - Não usar ITAD
 
 export interface ConsolidatedDeal {
   id: string // app:123 | package:456 | bundle:789
@@ -288,13 +290,13 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
   }
 
   try {
-    console.log(`🔍 Buscando deals do IsThereAnyDeal para ${cc}/${l}...`)
+    console.log(`🔍 Buscando deals: Steam (API) + Epic (GraphQL) para ${cc}/${l}...`)
     
-    // 1. Buscar deals do ITAD (Steam, Epic, Ubisoft)
-    const itadDeals = await itadAdapter.fetchTrending()
-    console.log(`📦 ITAD Deals: ${itadDeals.length} itens`)
+    // 1. Buscar deals da STEAM usando API Steam direta
+    const steamDeals = await steamAdapter.fetchTrending()
+    console.log(`📦 Steam Deals: ${steamDeals.length} itens`)
     
-    // 2. Obter jogos grátis da Epic Games (complementar)
+    // 2. Buscar jogos da Epic Games via GraphQL
     let epicFreeGames: any[] = [];
     try {
       const epicDeals = await listFreeGames(l, cc, cc);
@@ -302,22 +304,22 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
         ...deal,
         store: 'epic'
       }));
-      console.log(`🎮 Epic Free Games: ${epicFreeGames.length} itens`)
+      console.log(`🎮 Epic Games (GraphQL): ${epicFreeGames.length} itens`)
     } catch (epicError) {
-      console.warn('Falha ao buscar ofertas da Epic Games:', epicError);
+      console.warn('⚠️ Falha ao buscar ofertas da Epic Games:', epicError);
     }
     
-    console.log(`✨ Total de deals: ${itadDeals.length} do ITAD + ${epicFreeGames.length} grátis da Epic`)
+    console.log(`✨ Total: ${steamDeals.length} Steam + ${epicFreeGames.length} Epic`)
 
-    // Converter deals do ITAD para ConsolidatedDeal
+    // Converter deals para ConsolidatedDeal
     const consolidated: ConsolidatedDeal[] = []
     
-    // Processar ofertas do ITAD (Steam, Epic, Ubisoft)
-    for (const deal of itadDeals) {
+    // Processar ofertas da STEAM (API direta)
+    for (const deal of steamDeals) {
       const slug = deal.title.toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, '')
       
       consolidated.push({
-        id: `${deal.store}:${deal.storeAppId}`,
+        id: `steam:${deal.storeAppId}`,
         title: deal.title,
         slug,
         coverUrl: deal.coverUrl || '',
@@ -329,7 +331,7 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
         currency: deal.currency || 'BRL',
         releaseDate: undefined,
         stores: [{
-          store: deal.store,
+          store: 'steam',
           storeAppId: deal.storeAppId,
           url: deal.url,
           priceBase: deal.priceBase,
@@ -338,7 +340,7 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
           isActive: true
         }],
         bestPrice: {
-          store: deal.store,
+          store: 'steam',
           price: deal.priceFinal,
           discountPct: deal.discountPct || 0
         },
@@ -346,12 +348,12 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
       })
     }
     
-    // Processar ofertas da Epic Games
+    // Processar ofertas da Epic Games (GraphQL)
     for (const epicDeal of epicFreeGames) {
       // Verificar campos obrigatórios
       if (!epicDeal?.title) continue
       
-      const slug = epicDeal.title.toLowerCase().replace(/[^\\w]+/g, '-').replace(/(^-|-$)/g, '')
+      const slug = epicDeal.title.toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, '')
       
       // Verificar se já temos um jogo com o mesmo título para evitar duplicidade
       const existingDeal = consolidated.find(deal => 
@@ -395,14 +397,14 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
           isFree: epicDeal.isFree,
           baseGameTitle: undefined,
           currency: epicDeal.currency,
-          releaseDate: epicDeal.releaseDate, // Adicionando a data de lançamento
+          releaseDate: epicDeal.releaseDate,
           stores: epicDeal.stores,
           bestPrice: epicDeal.bestPrice,
           totalStores: epicDeal.totalStores
         })
       }
     }
-
+    
     console.log(`📦 Total consolidado ANTES do filtro: ${consolidated.length} itens`)
     
     // 🛡️ NSFW Shield - Sistema multi-camadas (ASYNC - busca idade da Steam)

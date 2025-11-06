@@ -4,6 +4,9 @@ import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 // Cache curto por região/idioma (5 minutos)
 const specialsCache = new MemoryCache<string, OfferDTO[]>(ttlSecondsToMs(300))
 
+// Cache de fallback (última resposta válida) - 24 horas
+const fallbackCache = new MemoryCache<string, OfferDTO[]>(ttlSecondsToMs(86400))
+
 // Cache para detalhes de apps (incluindo genres/categories)
 const appDetailsCache = new MemoryCache<string, any>(ttlSecondsToMs(3600)) // 1 hora
 
@@ -24,7 +27,11 @@ export async function fetchSteamAgeRating(appId: string): Promise<number | null>
   
   try {
     const response = await fetch(`https://store.steampowered.com/api/appdetails/?appids=${appId}&cc=BR&l=pt-BR`, {
-      signal: AbortSignal.timeout(2000) // Timeout de 2 segundos
+      signal: AbortSignal.timeout(2000), // Timeout de 2 segundos
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      }
     })
     
     if (!response.ok) {
@@ -120,15 +127,45 @@ export const steamAdapter: StoreAdapter = {
       const cacheKey = key(cc, l)
 
       const cached = specialsCache.get(cacheKey)
-      if (cached) return cached
+      if (cached) {
+        console.log(`✅ Usando ${cached.length} deals do cache Steam`)
+        return cached
+      }
 
       console.log('🎮 Buscando ofertas (specials) da Steam...')
+      
+      // Tentar com delay entre requisições (rate limiting)
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
       const url = `https://store.steampowered.com/api/featuredcategories?cc=${cc}&l=${l}`
-      const res = await fetch(url)
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Referer': 'https://store.steampowered.com/',
+          'Origin': 'https://store.steampowered.com'
+        },
+        signal: AbortSignal.timeout(10000) // 10 segundos timeout
+      })
+      
       if (!res.ok) {
         console.error(`❌ Steam API retornou status ${res.status}`)
+        console.error(`⏳ Steam bloqueou temporariamente. Tentando usar cache de fallback...`)
+        
+        // Tentar usar cache de fallback (última resposta válida)
+        const fallbackKey = `fallback:${cacheKey}`
+        const fallback = fallbackCache.get(fallbackKey)
+        if (fallback && fallback.length > 0) {
+          console.log(`✅ Usando cache de fallback com ${fallback.length} deals (até Steam desbloquear)`)
+          specialsCache.set(cacheKey, fallback) // Cachear por 5 min
+          return fallback
+        }
+        
+        console.error(`💡 Aguarde 10-30 minutos para Steam desbloquear. Por enquanto: 0 deals da Steam.`)
         return []
       }
+      
       const json = await res.json()
       console.log(`📊 Steam API retornou: ${json?.specials?.items?.length || 0} specials`)
 
@@ -179,8 +216,14 @@ export const steamAdapter: StoreAdapter = {
       // NSFW Shield vai usar apenas Layer 0 (bloqueio por título)
       console.log(`✅ ${offers.length} ofertas da Steam carregadas (sem enriquecimento)`)
 
-      // Cache curto
+      // Cache curto (5 min)
       specialsCache.set(cacheKey, offers)
+      
+      // Cache de fallback (24 horas) - para usar quando Steam bloquear
+      const fallbackKey = `fallback:${cacheKey}`
+      fallbackCache.set(fallbackKey, offers)
+      console.log(`💾 Cache de fallback atualizado com ${offers.length} deals`)
+      
       return offers
       
     } catch (error) {
