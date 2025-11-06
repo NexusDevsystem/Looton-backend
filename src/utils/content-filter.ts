@@ -3,6 +3,25 @@
  * Bloqueia jogos com temas sexuais, nudez e outros conteúdos inadequados
  */
 
+// Lista de jogos/títulos que são EXCEÇÕES (jogos legítimos que não devem ser bloqueados)
+const ALLOWED_GAMES = [
+  // Jogos AAA e conhecidos que contêm palavras bloqueadas mas são legítimos
+  'wolfenstein', 'doom', 'resident evil', 'devil may cry', 'bayonetta',
+  'god of war', 'the witcher', 'dragon age', 'mass effect', 'final fantasy',
+  'monster hunter', 'dark souls', 'bloodborne', 'elden ring',
+  'cyberpunk', 'fallout', 'skyrim', 'oblivion', 'morrowind',
+  'bioshock', 'borderlands', 'far cry', 'assassins creed', "assassin's creed",
+  'tomb raider', 'uncharted', 'the last of us', 'horizon',
+  'metal gear', 'street fighter', 'mortal kombat', 'tekken',
+  'battlefield', 'call of duty', 'halo', 'gears of war',
+  'diablo', 'starcraft', 'warcraft', 'world of warcraft',
+  'league of legends', 'dota', 'overwatch', 'apex legends',
+  'fortnite', 'pubg', 'valorant', 'counter-strike',
+  'minecraft', 'terraria', 'stardew valley', 'hollow knight',
+  'celeste', 'hades', 'dead cells', 'binding of isaac',
+  // Adicione mais conforme necessário
+];
+
 // Lista de palavras proibidas (case-insensitive)
 const BLOCKED_KEYWORDS = [
   // Conteúdo sexual/adulto - Variações de SEX
@@ -26,21 +45,35 @@ const BLOCKED_KEYWORDS = [
   
   // Dating e romance adulto
   'hot girls', 'sexy girls', 'dating sim', 'visual novel',
-  'girlfriend', 'boyfriend', 'lovers', 'romance',
+  'girlfriend', 'boyfriend', 'lovers',
   
   // Marcadores de conteúdo adulto
-  'nsfw', 'mature', 'explicit', 'censored', 'uncensored',
+  'nsfw', 'mature content', 'explicit', 'censored', 'uncensored',
   
   // Jogos/marcas específicas bloqueadas
   'achat', 'hunie', 'nekopara', 'mirror',
   'fresh', 'freshwomen', 'fresh women', 'freshwoman', 'fresh woman',
   'demon love', 'demonlove', 'demon wish', 'wish island',
   
-  // Dating/Romance games adultos (combinações específicas)
+  // Dating/Romance games adultos
   'love game', 'love story', 'love island', 'love simulator',
-  'romance game', 'romantic game',
+  'romance game', 'romantic game', 'romance simulation',
   'dating game', 'date sim', 'dating simulator',
   'visual novel',
+  
+  // Termos genéricos que PODEM indicar conteúdo adulto
+  'woman', 'women', 'lady', 'ladies', 'girl', 'girls',
+  'babe', 'babes', 'chick', 'chicks', 'female',
+  'wife', 'wives', 'bride', 'housewife', 'housewives',
+  'mother', 'mom', 'mommy', 'daughter',
+  'maid', 'maids', 'nurse', 'nurses', 'teacher',
+  'school girl', 'schoolgirl', 'student',
+  'beach babe', 'pool babe', 'vacation babe',
+  
+  // Termos relacionados a conteúdo sexual
+  'breast', 'breasts', 'boob', 'boobs', 'tits', 'titties',
+  'ass', 'butt', 'thick', 'curvy', 'busty',
+  'naughty', 'seduction', 'seduce',
   
   // Violência extrema
   'gore', 'extreme violence', 'torture', 'blood bath'
@@ -76,6 +109,20 @@ const SUSPICIOUS_GENRES = [
 ];
 
 /**
+ * Verifica se o jogo está na lista de exceções (jogos legítimos permitidos)
+ */
+function isAllowedGame(title: string): boolean {
+  if (!title) return false;
+  
+  const normalizedTitle = title.toLowerCase().trim();
+  
+  return ALLOWED_GAMES.some(allowedGame => {
+    const normalizedAllowed = allowedGame.toLowerCase();
+    return normalizedTitle.includes(normalizedAllowed);
+  });
+}
+
+/**
  * Verifica se um texto contém palavras bloqueadas
  */
 function containsBlockedKeyword(text: string): boolean {
@@ -100,13 +147,6 @@ function containsBlockedKeyword(text: string): boolean {
     // Verificação 3: Substring (para detectar em palavras compostas)
     // Exemplo: "SEXO AEREO" contém "SEX"
     if (normalizedText.includes(normalizedKeyword)) {
-      return true;
-    }
-    
-    // Verificação 4: Remover caracteres especiais para comparação
-    const textNoSpecialChars = normalizedText.replace(/[^\w\s]/g, ' ');
-    const keywordNoSpecialChars = normalizedKeyword.replace(/[^\w\s]/g, ' ');
-    if (textNoSpecialChars.includes(keywordNoSpecialChars)) {
       return true;
     }
     
@@ -138,22 +178,30 @@ function hasSuspiciousGenres(genres: string[]): boolean {
  * Filtra jogo individual verificando todos os campos relevantes
  */
 export function isGameAppropriate(game: any): boolean {
+  const gameTitle = game.title || game.name || game.game?.title || '';
+  
+  // PRIMEIRO: Verificar se é um jogo permitido (exceção)
+  if (isAllowedGame(gameTitle)) {
+    console.log(`✅ Jogo permitido (exceção): ${gameTitle}`);
+    return true;
+  }
+  
   // Verificar título
-  if (containsBlockedKeyword(game.title || game.name || game.game?.title)) {
-    console.log(`🚫 Bloqueado por título: ${game.title || game.name}`);
+  if (containsBlockedKeyword(gameTitle)) {
+    console.log(`🚫 Bloqueado por título: ${gameTitle}`);
     return false;
   }
   
   // Verificar descrição
   if (containsBlockedKeyword(game.description || game.game?.description)) {
-    console.log(`🚫 Bloqueado por descrição: ${game.title || game.name}`);
+    console.log(`🚫 Bloqueado por descrição: ${gameTitle}`);
     return false;
   }
   
   // Verificar tags/gêneros
   const genres = game.genres || game.tags || game.game?.genres || [];
   if (hasSuspiciousGenres(genres)) {
-    console.log(`🚫 Bloqueado por gênero: ${game.title || game.name} - ${genres.join(', ')}`);
+    console.log(`🚫 Bloqueado por gênero: ${gameTitle} - ${genres.join(', ')}`);
     return false;
   }
   
