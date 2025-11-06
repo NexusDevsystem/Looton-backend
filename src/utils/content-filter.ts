@@ -317,11 +317,11 @@ export function isGameAppropriate(game: any): boolean {
   }
   
   // TERCEIRO: Verificar combinações perigosas (Indie + Casual/Simulation/etc)
-  // Muitos jogos pornôs são indie + casual ou indie + simulation
-  if (hasIndieDangerousCombination(genres)) {
-    console.log(`🚫 BLOQUEIO POR COMBINAÇÃO PERIGOSA: ${gameTitle} - ${genres.join(', ')}`);
-    return false;
-  }
+  // TEMPORARIAMENTE DESATIVADO - estava bloqueando jogos legítimos
+  // if (hasIndieDangerousCombination(genres)) {
+  //   console.log(`🚫 BLOQUEIO POR COMBINAÇÃO PERIGOSA: ${gameTitle} - ${genres.join(', ')}`);
+  //   return false;
+  // }
   
   // Verificar título
   if (containsBlockedKeyword(gameTitle)) {
