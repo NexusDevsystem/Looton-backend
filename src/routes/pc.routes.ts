@@ -146,6 +146,40 @@ export default async function pcRoutes(app: FastifyInstance) {
         variants.add('led')
       }
       
+      // GPU Detection - termos gerais
+      if (t.includes('gpu') || t.includes('video') || t.includes('gráfica') || t.includes('gráficos')) {
+        variants.add('gpu')
+        variants.add('placa de video')
+        variants.add('placa de vídeo')
+        variants.add('video card')
+        variants.add('graphics card')
+        variants.add('gráficos')
+        variants.add('gráfica')
+        // Incluir também variações comuns
+        const gpuTerms = ['nvidia', 'amd', 'rtx', 'gtx', 'rx', 'radeon']
+        for (const term of gpuTerms) {
+          variants.add(`${term} gpu`)
+          variants.add(`${term} video`)
+          variants.add(`${term} gráficos`)
+          variants.add(`${term} placa de video`)
+        }
+      }
+      
+      // CPU Detection - termos gerais
+      if (t.includes('cpu') || t.includes('processador')) {
+        variants.add('cpu')
+        variants.add('processador')
+        variants.add('processor')
+        variants.add('microprocessor')
+        // Incluir também variações comuns
+        const cpuTerms = ['intel', 'amd', 'core', 'ryzen']
+        for (const term of cpuTerms) {
+          variants.add(`${term} cpu`)
+          variants.add(`${term} processor`)
+          variants.add(`${term} processador`)
+        }
+      }
+      
       // Peripherals Detection
       if (t.includes('teclado') || t.includes('mouse') || t.includes('headset') || t.includes('fone')) {
         if (t.includes('teclado')) {
