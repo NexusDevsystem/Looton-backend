@@ -17,8 +17,19 @@ const ALLOWED_GAMES = [
   'diablo', 'starcraft', 'warcraft', 'world of warcraft',
   'league of legends', 'dota', 'overwatch', 'apex legends',
   'fortnite', 'pubg', 'valorant', 'counter-strike',
+  
+  // Jogos Indie populares e legítimos
   'minecraft', 'terraria', 'stardew valley', 'hollow knight',
   'celeste', 'hades', 'dead cells', 'binding of isaac',
+  'undertale', 'cuphead', 'shovel knight', 'ori and',
+  'bastion', 'transistor', 'pyre', 'supergiant',
+  'don\'t starve', 'risk of rain', 'enter the gungeon',
+  'slay the spire', 'factorio', 'rimworld', 'kerbal',
+  'subnautica', 'the forest', 'valheim', 'rust',
+  'among us', 'fall guys', 'rocket league', 'cities skylines',
+  'euro truck', 'farming simulator', 'planet coaster', 'planet zoo',
+  'satisfactory', 'no man\'s sky', 'astroneer', 'grounded',
+  
   // Adicione mais conforme necessário
 ];
 
@@ -130,13 +141,32 @@ const ABSOLUTE_BLOCKED_CATEGORIES = [
 
 /**
  * Combinações perigosas - se o jogo tem INDIE + uma dessas, é bloqueado
+ * MAS APENAS se NÃO tiver categorias seguras (Action, Sports, Racing, etc)
  */
 const INDIE_DANGEROUS_COMBINATIONS = [
   'casual',
-  'simulation',
-  'adventure',
-  'rpg',
-  'strategy'
+  'simulation'
+  // Removidos: adventure, rpg, strategy (muitos jogos legítimos)
+];
+
+/**
+ * Categorias SEGURAS que indicam jogo legítimo
+ * Se o jogo indie tem uma dessas, NÃO é bloqueado mesmo com casual/simulation
+ */
+const SAFE_CATEGORIES = [
+  'action',
+  'sports',
+  'racing',
+  'fps',
+  'shooter',
+  'platformer',
+  'puzzle',
+  'fighting',
+  'horror',
+  'survival',
+  'multiplayer',
+  'co-op',
+  'competitive'
 ];
 
 /**
@@ -218,7 +248,8 @@ function hasAbsoluteBlockedCategories(genres: string[]): boolean {
 
 /**
  * Verifica combinações perigosas de Indie com outros gêneros
- * Jogos indie + casual/simulation/adventure/rpg são frequentemente adultos
+ * Jogos indie + casual/simulation são frequentemente adultos
+ * MAS: Se tiver categorias seguras (Action, Sports, Racing), é permitido
  */
 function hasIndieDangerousCombination(genres: string[]): boolean {
   if (!genres || genres.length === 0) return false;
@@ -228,12 +259,23 @@ function hasIndieDangerousCombination(genres: string[]): boolean {
   
   if (!hasIndie) return false;
   
+  // Verificar se tem categoria SEGURA (Action, Sports, Racing, etc)
+  const hasSafeCategory = SAFE_CATEGORIES.some(safe =>
+    normalizedGenres.some(genre => genre.includes(safe))
+  );
+  
+  // Se tem categoria segura, NÃO bloquear
+  if (hasSafeCategory) {
+    return false;
+  }
+  
+  // Verificar se tem combinação perigosa (Casual ou Simulation)
   const hasDangerous = INDIE_DANGEROUS_COMBINATIONS.some(dangerous =>
     normalizedGenres.some(genre => genre.includes(dangerous))
   );
   
   if (hasDangerous) {
-    console.log(`⚠️ COMBINAÇÃO PERIGOSA: Indie + ${normalizedGenres.join(', ')}`);
+    console.log(`⚠️ COMBINAÇÃO PERIGOSA: Indie + ${normalizedGenres.join(', ')} (SEM categorias seguras)`);
     return true;
   }
   
