@@ -12,6 +12,46 @@ function key(cc: string, l: string) {
 }
 
 /**
+ * Busca APENAS a idade mínima de um jogo da Steam (para NSFW Shield)
+ * Cache agressivo de 1 hora para evitar requests repetidos
+ */
+export async function fetchSteamAgeRating(appId: string): Promise<number | null> {
+  const cacheKey = `age:${appId}`
+  
+  // Verificar cache primeiro (1 hora)
+  const cached = appDetailsCache.get(cacheKey)
+  if (cached !== undefined) return cached as number | null
+  
+  try {
+    const response = await fetch(`https://store.steampowered.com/api/appdetails/?appids=${appId}&cc=BR&l=pt-BR`, {
+      signal: AbortSignal.timeout(2000) // Timeout de 2 segundos
+    })
+    
+    if (!response.ok) {
+      appDetailsCache.set(cacheKey, null)
+      return null
+    }
+    
+    const data = await response.json()
+    const gameData = data[appId]?.data
+    
+    if (!gameData) {
+      appDetailsCache.set(cacheKey, null)
+      return null
+    }
+    
+    const requiredAge = gameData.required_age || 0
+    appDetailsCache.set(cacheKey, requiredAge)
+    
+    return requiredAge
+  } catch (error) {
+    // Em caso de erro/timeout, cachear como null (não bloquear)
+    appDetailsCache.set(cacheKey, null)
+    return null
+  }
+}
+
+/**
  * Busca detalhes completos de um app na Steam, incluindo gêneros, categorias, tags e dados de conteúdo
  */
 async function fetchAppDetails(appId: string, cc: string = 'BR', l: string = 'pt-BR'): Promise<{ 
@@ -85,8 +125,12 @@ export const steamAdapter: StoreAdapter = {
       console.log('🎮 Buscando ofertas (specials) da Steam...')
       const url = `https://store.steampowered.com/api/featuredcategories?cc=${cc}&l=${l}`
       const res = await fetch(url)
-      if (!res.ok) return []
+      if (!res.ok) {
+        console.error(`❌ Steam API retornou status ${res.status}`)
+        return []
+      }
       const json = await res.json()
+      console.log(`📊 Steam API retornou: ${json?.specials?.items?.length || 0} specials`)
 
       const items: any[] = json?.specials?.items ?? []
       const offers: OfferDTO[] = []

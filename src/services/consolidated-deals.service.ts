@@ -1,7 +1,8 @@
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { shuffleWithSeed, stringToSeed } from '../utils/seedable-prng.js'
 import { listFreeGames } from '../integrations/epic/freeGames.js'
-import { filterNSFWGames } from '../utils/nsfw-shield.js'
+import { filterNSFWGamesAsync } from '../utils/nsfw-shield.js'
+import { itadAdapter } from '../adapters/itad.adapter.js'
 
 export interface ConsolidatedDeal {
   id: string // app:123 | package:456 | bundle:789
@@ -16,7 +17,7 @@ export interface ConsolidatedDeal {
   currency?: string
   releaseDate?: string // Data de lançamento no formato ISO
   stores: Array<{
-    store: 'steam' | 'epic'
+    store: 'steam' | 'epic' | 'ubisoft'
     storeAppId: string // somente o número
     url: string
     priceBase?: number
@@ -287,17 +288,13 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
   }
 
   try {
-    console.log(`🔍 Buscando deals de múltiplas fontes para ${cc}/${l}...`)
+    console.log(`🔍 Buscando deals do IsThereAnyDeal para ${cc}/${l}...`)
     
-    // 1. Buscar specials (jogos em promoção especial)
-    const specials = await fetchSpecials(cc, l)
-    console.log(`📦 Specials: ${specials.length} itens`)
+    // 1. Buscar deals do ITAD (Steam, Epic, Ubisoft)
+    const itadDeals = await itadAdapter.fetchTrending()
+    console.log(`📦 ITAD Deals: ${itadDeals.length} itens`)
     
-    // 2. Buscar top sellers e novos lançamentos
-    const topSellers = await fetchTopSellers(cc, l)
-    console.log(`🏆 Top Sellers + New Releases: ${topSellers.length} itens`)
-    
-    // 3. Obter jogos grátis da Epic Games
+    // 2. Obter jogos grátis da Epic Games (complementar)
     let epicFreeGames: any[] = [];
     try {
       const epicDeals = await listFreeGames(l, cc, cc);
@@ -310,68 +307,40 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
       console.warn('Falha ao buscar ofertas da Epic Games:', epicError);
     }
     
-    // Combinar todas as fontes e remover duplicatas
-    const allItems = [...specials, ...topSellers]
-    const uniqueItems = new Map<number, any>()
-    
-    for (const item of allItems) {
-      if (item?.id && !uniqueItems.has(item.id)) {
-        uniqueItems.set(item.id, item)
-      }
-    }
-    
-    const combinedSpecials = Array.from(uniqueItems.values())
-    console.log(`✨ Total único após combinar fontes: ${combinedSpecials.length} itens`)
-    
-    // Ordena por desconto desc para priorizar os melhores
-    combinedSpecials.sort((a: any, b: any) => (b?.discount_percent || 0) - (a?.discount_percent || 0))
+    console.log(`✨ Total de deals: ${itadDeals.length} do ITAD + ${epicFreeGames.length} grátis da Epic`)
 
-    // Converter os itens diretos de specials para ConsolidatedDeal
-    // Estes itens já contêm dados de preço e desconto completos
+    // Converter deals do ITAD para ConsolidatedDeal
     const consolidated: ConsolidatedDeal[] = []
     
-
-    
-    // Processar ofertas da Steam
-    for (const item of combinedSpecials) {
-      // Verificar campos obrigatórios
-      if (!item?.id || !item?.name) continue
-      
-      // Converter preços de centavos para reais
-      const originalPrice = (item.original_price ?? 0) / 100
-      const finalPrice = (item.final_price ?? 0) / 100
-      const discountPercent = item.discount_percent ?? 0
-      
-      // Só adicionar se tiver desconto ou for gratuito
-      if (!(discountPercent > 0 || item.is_free)) continue
-      
-      const slug = item.name.toLowerCase().replace(/[^\\w]+/g, '-').replace(/(^-|-$)/g, '')
+    // Processar ofertas do ITAD (Steam, Epic, Ubisoft)
+    for (const deal of itadDeals) {
+      const slug = deal.title.toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, '')
       
       consolidated.push({
-        id: `app:${item.id}`,
-        title: item.name,
+        id: `${deal.store}:${deal.storeAppId}`,
+        title: deal.title,
         slug,
-        coverUrl: item.header_image || item.small_capsule_image,
-        genres: [],
-        tags: [],
+        coverUrl: deal.coverUrl || '',
+        genres: deal.genres || [],
+        tags: deal.tags || [],
         kind: 'game',
-        isFree: !!item.is_free,
+        isFree: deal.priceFinal === 0,
         baseGameTitle: undefined,
-        currency: item.currency || 'BRL',
-        releaseDate: item.release_date || undefined, // Adicionando a data de lançamento, se disponível
+        currency: deal.currency || 'BRL',
+        releaseDate: undefined,
         stores: [{
-          store: 'steam',
-          storeAppId: String(item.id),
-          url: `https://store.steampowered.com/app/${item.id}/`,
-          priceBase: item.is_free ? 0 : originalPrice,
-          priceFinal: item.is_free ? 0 : finalPrice,
-          discountPct: item.is_free ? 0 : discountPercent,
+          store: deal.store,
+          storeAppId: deal.storeAppId,
+          url: deal.url,
+          priceBase: deal.priceBase,
+          priceFinal: deal.priceFinal,
+          discountPct: deal.discountPct || 0,
           isActive: true
         }],
         bestPrice: {
-          store: 'steam',
-          price: item.is_free ? 0 : finalPrice,
-          discountPct: item.is_free ? 0 : discountPercent
+          store: deal.store,
+          price: deal.priceFinal,
+          discountPct: deal.discountPct || 0
         },
         totalStores: 1
       })
@@ -436,8 +405,8 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
 
     console.log(`📦 Total consolidado ANTES do filtro: ${consolidated.length} itens`)
     
-    // 🛡️ NSFW Shield - Sistema multi-camadas
-    const safeConsolidated = filterNSFWGames(consolidated)
+    // 🛡️ NSFW Shield - Sistema multi-camadas (ASYNC - busca idade da Steam)
+    const safeConsolidated = await filterNSFWGamesAsync(consolidated)
     console.log(`🛡️ Total consolidado APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
 
     if (safeConsolidated.length > 0) {
@@ -649,8 +618,8 @@ async function generateEligiblePool(cc: string, l: string): Promise<Consolidated
 
   console.log(`📦 Pool ANTES do filtro: ${consolidated.length} itens`)
   
-  // 🛡️ NSFW Shield - Sistema multi-camadas
-  const safeConsolidated = filterNSFWGames(consolidated)
+  // 🛡️ NSFW Shield - Sistema multi-camadas (ASYNC - busca idade da Steam)
+  const safeConsolidated = await filterNSFWGamesAsync(consolidated)
   console.log(`🛡️ Pool APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
   console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${safeConsolidated.length} itens)`)
 

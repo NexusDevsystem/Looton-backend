@@ -1,5 +1,5 @@
 export type OfferDTO = {
-  store: 'steam' | 'epic'
+  store: 'steam' | 'epic' | 'ubisoft'
   storeAppId: string
   title: string
   url: string

@@ -3,6 +3,8 @@
  * Baseado em sinais oficiais da Steam/Epic + heurística de texto
  */
 
+import { fetchSteamAgeRating } from '../adapters/steam.adapter.js'
+
 export type GameDoc = {
   appId: number | string;
   store: "steam" | "epic";
@@ -16,6 +18,12 @@ export type GameDoc = {
   about_the_game?: string;
   mature_content_description?: string;      // Steam
 };
+
+// AppIDs BANIDOS (blacklist de jogos conhecidos - adicionar conforme necessário)
+const BANNED_APP_IDS = new Set<string>([
+  // Adicionar AppIDs de jogos adultos conhecidos aqui
+  // Exemplo: "730690", "1234567"
+]);
 
 // Tags/categorias BANIDAS (tudo em minúsculas)
 const BANNED_TAGS = new Set([
@@ -100,11 +108,23 @@ function ratingSignals(ratings?: { system: "ESRB"|"PEGI"; labels: string[] }[]) 
 }
 
 /**
- * FUNÇÃO PRINCIPAL: Decide se o jogo deve ser bloqueado
+ * FUNÇÃO PRINCIPAL: Decide se o jogo deve ser bloqueado (ASYNC)
  * Retorna: { blocked: true/false, reasons: [...] }
  */
-export function decideNSFW(app: GameDoc): { blocked: boolean; reasons: string[] } {
+export async function decideNSFWAsync(app: GameDoc): Promise<{ blocked: boolean; reasons: string[] }> {
   const reasons: string[] = [];
+
+  // ========================================
+  // CAMADA -1: AppID na blacklist (bloqueio INSTANTÂNEO)
+  // ========================================
+  
+  const appIdStr = String(app.appId || '');
+  if (BANNED_APP_IDS.has(appIdStr)) {
+    reasons.push(`banned_app_id: ${appIdStr}`);
+    console.log(`🚫 NSFW Shield BLOQUEOU (APP ID): ${app.title} (${appIdStr})`);
+    console.log(`   Motivo: AppID na blacklist`);
+    return { blocked: true, reasons };
+  }
 
   // ========================================
   // CAMADA 0: Verificação IMEDIATA de título
@@ -120,6 +140,17 @@ export function decideNSFW(app: GameDoc): { blocked: boolean; reasons: string[] 
       console.log(`🚫 NSFW Shield BLOQUEOU (TÍTULO): ${app.title}`);
       console.log(`   Motivo: Palavra banida no título: "${banned}"`);
       return { blocked: true, reasons };
+    }
+  }
+
+  // ========================================
+  // CAMADA 0.5: Buscar idade mínima da Steam (se for jogo da Steam e não tiver idade)
+  // ========================================
+  
+  if (app.store === 'steam' && !app.required_age) {
+    const steamAge = await fetchSteamAgeRating(appIdStr)
+    if (steamAge !== null) {
+      app.required_age = steamAge
     }
   }
 
@@ -192,6 +223,69 @@ export function decideNSFW(app: GameDoc): { blocked: boolean; reasons: string[] 
 }
 
 /**
+ * FUNÇÃO SÍNCRONA (sem buscar idade da Steam)
+ * Usa apenas dados já disponíveis
+ */
+export function decideNSFW(app: GameDoc): { blocked: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+
+  // Verificações síncronas apenas (sem fetchSteamAgeRating)
+  const appIdStr = String(app.appId || '');
+  if (BANNED_APP_IDS.has(appIdStr)) {
+    reasons.push(`banned_app_id: ${appIdStr}`);
+    return { blocked: true, reasons };
+  }
+
+  const titleLower = (app.title || '').toLowerCase().trim();
+  for (const banned of BANNED_TITLE_WORDS) {
+    if (titleLower.includes(banned)) {
+      reasons.push(`title_blocked: "${banned}"`);
+      return { blocked: true, reasons };
+    }
+  }
+
+  // Continua com as outras camadas (sem buscar idade)
+  if ((app.required_age ?? 0) >= 18) {
+    reasons.push(`required_age=${app.required_age}`);
+  }
+
+  const descriptorHits = textHasKeywords(...normList(app.content_descriptors));
+  if (descriptorHits.length) {
+    reasons.push(`content_descriptors: ${descriptorHits.join(", ")}`);
+  }
+
+  if (app.mature_content_description && KEYWORD_REGEX.test(app.mature_content_description)) {
+    reasons.push("mature_content_description");
+  }
+
+  const ratingHits = ratingSignals(app.ratings);
+  reasons.push(...ratingHits);
+
+  const tagHits = anyMatch(app.tags, BANNED_TAGS);
+  if (tagHits.length) {
+    reasons.push(`tags: ${tagHits.join(", ")}`);
+  }
+
+  const genreHits = anyMatch(app.genres, BANNED_TAGS);
+  if (genreHits.length) {
+    reasons.push(`genres: ${genreHits.join(", ")}`);
+  }
+
+  const kwHits = textHasKeywords(
+    app.title || "",
+    app.short_description || "",
+    app.about_the_game || "",
+    app.mature_content_description || ""
+  );
+  if (kwHits.length) {
+    reasons.push(`keywords: ${kwHits.join(", ")}`);
+  }
+
+  const blocked = reasons.length > 0;
+  return { blocked, reasons };
+}
+
+/**
  * Versão simplificada para compatibilidade com filtro antigo
  * Aceita objetos no formato atual (game, deal, offer)
  */
@@ -219,7 +313,45 @@ export function isGameAppropriateV2(game: any): boolean {
 }
 
 /**
- * Filtra array de jogos removendo conteúdo NSFW
+ * Filtra array de jogos removendo conteúdo NSFW (ASYNC - busca idade da Steam)
+ */
+export async function filterNSFWGamesAsync<T>(games: T[]): Promise<T[]> {
+  const results = await Promise.all(
+    games.map(async (game: any) => {
+      const gameTitle = game.title || game.name || game.game?.title || '';
+      const genres = game.genres || game.tags || game.game?.genres || [];
+      
+      const doc: GameDoc = {
+        appId: game.storeAppId || game.appId || game.id || 0,
+        store: game.store || "steam",
+        title: gameTitle,
+        required_age: game.required_age,
+        content_descriptors: game.content_descriptors,
+        ratings: game.ratings,
+        genres: Array.isArray(genres) ? genres : [],
+        tags: game.tags || [],
+        short_description: game.description || game.short_description,
+        about_the_game: game.about_the_game,
+        mature_content_description: game.mature_content_description
+      };
+      
+      const { blocked } = await decideNSFWAsync(doc);
+      return { game, blocked };
+    })
+  );
+  
+  const filtered = results.filter(r => !r.blocked).map(r => r.game);
+  const removed = games.length - filtered.length;
+  
+  if (removed > 0) {
+    console.log(`🛡️ NSFW Shield (ASYNC): ${removed} jogos adultos removidos de ${games.length} total`);
+  }
+  
+  return filtered;
+}
+
+/**
+ * Filtra array de jogos removendo conteúdo NSFW (SYNC - sem buscar idade)
  */
 export function filterNSFWGames<T>(games: T[]): T[] {
   const filtered = games.filter(isGameAppropriateV2);
