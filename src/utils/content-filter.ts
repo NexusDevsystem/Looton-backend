@@ -35,6 +35,35 @@ const BLOCKED_KEYWORDS = [
   'achat', 'hunie', 'nekopara', 'mirror',
   'fresh', 'freshwomen', 'fresh women', 'freshwoman', 'fresh woman',
   
+  // Palavras relacionadas a mulheres que frequentemente indicam conteúdo adulto
+  'woman', 'women', 'lady', 'ladies', 'female', 'fem', 'feminine', 'feminine wiles', 'female warrior',
+  'naughty woman', 'naughty women', 'sexy woman', 'sexy women', 'hot woman', 'hot women',
+  'busty woman', 'busty women', 'curvy woman', 'curvy women', 'slim woman', 'slim women',
+  'bachelor', 'bachelor party', 'bachelor life', 'bachelor game',
+  'housewives', 'house wife', 'house wife life', 'house wife game',
+  'mother', 'mom', 'moms', 'mother game', 'mom game', 'mommy game',
+  'daughter', 'daughter game', 'family', 'family game', 'family life',
+  'maid', 'maid game', 'maids', 'maid life', 'maid simulator',
+  'nurse', 'nurse game', 'doctors and nurses', 'hospital game',
+  'teacher', 'teacher game', 'student teacher', 'school girl', 'school life',
+  
+  // Variações em outros idiomas
+  'mulher', 'mulheres', 'senhora', 'senhoras', 'feminina', 'feminino', 'mulherada',
+  'frau', 'frauen', 'donna', 'donne', 'femme', 'femmes', 'mujer', 'mujeres',
+  'femme', 'femminile', 'feminino', 'feminina', 'donna', 'fille', 'filles',
+  'girl', 'girls', 'young woman', 'young women', 'adult woman', 'adult women',
+  'wife', 'wives', 'bride', 'brides', 'babe', 'babes', 'chick', 'chicks',
+  'babe game', 'babe life', 'chick game', 'chick life',
+  
+  // Termos em contextos potencialmente adultos
+  'nurse', 'nurses', 'teacher', 'teachers', 'maid', 'maids', 'maidens', 'school',
+  'school girl', 'school girls', 'student', 'students', 'teacher student',
+  'housewife', 'housewives', 'mom', 'moms', 'mother', 'mothers', 'mommy',
+  'daughter', 'daughters', 'family', 'family life', 'step', 'stepsis',
+  'stepsister', 'stepbrother', 'bff', 'bffs', 'best friend', 'bestfriends',
+  'beach', 'beach babe', 'beach babes', 'pool', 'pool babe', 'pool babes',
+  'vacation', 'vacation babe', 'vacation babes', 'trip', 'trip babe', 'trip babes',
+
   // Violência extrema
   'gore', 'extreme violence', 'torture', 'blood bath'
 ];
@@ -47,7 +76,13 @@ const SUSPICIOUS_GENRES = [
   'sexual content',
   'nudity',
   'erotic',
-  'anime' // Bloquear todo conteúdo anime
+  'anime', // Bloquear todo conteúdo anime
+  'dating sim',
+  'visual novel',
+  'romance',
+  'romantic',
+  'life sim',
+  'simulation'
 ];
 
 /**
