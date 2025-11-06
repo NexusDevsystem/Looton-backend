@@ -63,6 +63,24 @@ const BLOCKED_KEYWORDS = [
   'stepsister', 'stepbrother', 'bff', 'bffs', 'best friend', 'bestfriends',
   'beach', 'beach babe', 'beach babes', 'pool', 'pool babe', 'pool babes',
   'vacation', 'vacation babe', 'vacation babes', 'trip', 'trip babe', 'trip babes',
+  
+  // Termos relacionados a conteúdos eróticos/sugestivos
+  'milk', 'milky', 'lactation', 'lactating', 'breast', 'breasts', 'boob', 'boobs',
+  'tits', 'titties', 'ass', 'asses', 'butt', 'butts', 'thick', 'thick girl', 'thick girls',
+  'curvy', 'curves', 'busty', 'bust', 'hot', 'hot girl', 'hot girls', 'naughty',
+  'naughty girl', 'naughty girls', 'seductive', 'seduce', 'seduction',
+  'erotic', 'erotic game', 'erotic life', 'erotic sim', 'erotic simulation',
+  'lust', 'lustful', 'naughty nurse', 'sexy nurse', 'hot nurse',
+  'adult only', 'adult game', 'adult content', 'mature content', 'mature game',
+  
+  // Termos relacionados a conteúdos eróticos/sugestivos
+  'milk', 'milky', 'lactation', 'lactating', 'breast', 'breasts', 'boob', 'boobs',
+  'tits', 'titties', 'ass', 'asses', 'butt', 'butts', 'thick', 'thick girl', 'thick girls',
+  'curvy', 'curves', 'busty', 'bust', 'hot', 'hot girl', 'hot girls', 'naughty',
+  'naughty girl', 'naughty girls', 'seductive', 'seduce', 'seduction',
+  'erotic', 'erotic game', 'erotic life', 'erotic sim', 'erotic simulation',
+  'lust', 'lustful', 'naughty nurse', 'sexy nurse', 'hot nurse',
+  'adult only', 'adult game', 'adult content', 'mature content', 'mature game',
 
   // Violência extrema
   'gore', 'extreme violence', 'torture', 'blood bath'
@@ -82,7 +100,19 @@ const SUSPICIOUS_GENRES = [
   'romance',
   'romantic',
   'life sim',
-  'simulation'
+  'erotic sim',
+  'erotic simulation',
+  'adult simulation',
+  'adult sim',
+  'mature',
+  'mature content',
+  'sexy',
+  'seductive',
+  'lust',
+  'lustful',
+  'nudist',
+  'nsfw',
+  'ecchi'
 ];
 
 /**
