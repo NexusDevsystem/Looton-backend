@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { fetchConsolidatedDeals } from '../services/consolidated-deals.service.js'
-import { filterInappropriateGames } from '../utils/content-filter.js'
+import { filterNSFWGames } from '../utils/nsfw-shield.js'
 
 export default async function dealsRoutes(app: FastifyInstance) {
 
@@ -25,9 +25,8 @@ export default async function dealsRoutes(app: FastifyInstance) {
       
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       
-      // FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
-      // const safeDeals = filterInappropriateGames(deals)
-      const safeDeals = deals // SEM FILTRO
+      // 🛡️ NSFW Shield - Sistema multi-camadas
+      const safeDeals = filterNSFWGames(deals)
       console.log(`🛡️ Deals filtrados: ${safeDeals.length} seguros de ${deals.length} total (${deals.length - safeDeals.length} removidos)`)
       
       // Se não houver deals, retornar array vazio

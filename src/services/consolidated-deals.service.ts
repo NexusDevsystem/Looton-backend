@@ -1,7 +1,7 @@
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { shuffleWithSeed, stringToSeed } from '../utils/seedable-prng.js'
 import { listFreeGames } from '../integrations/epic/freeGames.js'
-import { filterInappropriateGames } from '../utils/content-filter.js'
+import { filterNSFWGames } from '../utils/nsfw-shield.js'
 
 export interface ConsolidatedDeal {
   id: string // app:123 | package:456 | bundle:789
@@ -436,9 +436,8 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
 
     console.log(`📦 Total consolidado ANTES do filtro: ${consolidated.length} itens`)
     
-    // 🛡️ FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
-    // const safeConsolidated = filterInappropriateGames(consolidated)
-    const safeConsolidated = consolidated // SEM FILTRO
+    // 🛡️ NSFW Shield - Sistema multi-camadas
+    const safeConsolidated = filterNSFWGames(consolidated)
     console.log(`🛡️ Total consolidado APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
 
     if (safeConsolidated.length > 0) {
@@ -650,9 +649,8 @@ async function generateEligiblePool(cc: string, l: string): Promise<Consolidated
 
   console.log(`📦 Pool ANTES do filtro: ${consolidated.length} itens`)
   
-  // 🛡️ FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
-  // const safeConsolidated = filterInappropriateGames(consolidated)
-  const safeConsolidated = consolidated // SEM FILTRO
+  // 🛡️ NSFW Shield - Sistema multi-camadas
+  const safeConsolidated = filterNSFWGames(consolidated)
   console.log(`🛡️ Pool APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
   console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${safeConsolidated.length} itens)`)
 

@@ -3,7 +3,7 @@ import { getIntelligentFeed, enrichGameData, FeedParams } from '../services/inte
 import { servedGamesTracker } from '../services/served-games-cache.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { getCurrentFeed } from '../services/curate.js'
-import { filterInappropriateGames } from '../utils/content-filter.js'
+import { filterNSFWGames } from '../utils/nsfw-shield.js'
 
 export default async function feedRoutes(app: FastifyInstance) {
   // Legacy curated feed endpoint (keep for compatibility)
@@ -48,9 +48,8 @@ export default async function feedRoutes(app: FastifyInstance) {
       const allOffers = [...steamGames];
       const allGames = allOffers.map(enrichGameData);
       
-      // 🔒 FILTRO TEMPORARIAMENTE DESATIVADO PARA DEBUG
-      // const safeGames = filterInappropriateGames(allGames);
-      const safeGames = allGames; // SEM FILTRO
+      // �️ NSFW Shield - Sistema multi-camadas
+      const safeGames = filterNSFWGames(allGames);
       
       console.log(`Combined ${safeGames.length} safe games from ${steamGames.length} Steam (${allGames.length - safeGames.length} filtered)`);
 
