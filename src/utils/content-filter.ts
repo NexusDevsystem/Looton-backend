@@ -83,7 +83,10 @@ const BLOCKED_KEYWORDS = [
   'adult only', 'adult game', 'adult content', 'mature content', 'mature game',
 
   // Violência extrema
-  'gore', 'extreme violence', 'torture', 'blood bath'
+  'gore', 'extreme violence', 'torture', 'blood bath',
+
+  // Jogo específico a ser bloqueado
+  'Shoot! & Ahhhhh~'
 ];
 
 // Gêneros/tags que frequentemente contêm conteúdo adulto
@@ -140,6 +143,13 @@ function containsBlockedKeyword(text: string): boolean {
     // Verificação 3: Substring (para detectar em palavras compostas)
     // Exemplo: "SEXO AEREO" contém "SEX"
     if (normalizedText.includes(normalizedKeyword)) {
+      return true;
+    }
+    
+    // Verificação 4: Remover caracteres especiais para comparação
+    const textNoSpecialChars = normalizedText.replace(/[^\w\s]/g, ' ');
+    const keywordNoSpecialChars = normalizedKeyword.replace(/[^\w\s]/g, ' ');
+    if (textNoSpecialChars.includes(keywordNoSpecialChars)) {
       return true;
     }
     
