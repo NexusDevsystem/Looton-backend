@@ -106,6 +106,7 @@ const SUSPICIOUS_GENRES = [
   'nudist',
   'nsfw',
   'ecchi'
+  // Removidos 'indie' e 'casual' - agora usamos INDIE_DANGEROUS_COMBINATIONS
 ];
 
 /**
@@ -121,7 +122,21 @@ const ABSOLUTE_BLOCKED_CATEGORIES = [
   'nudity',
   'nsfw',
   'mature content',
-  'erotic'
+  'erotic',
+  'visual novel', // SEMPRE bloquear visual novels
+  'dating sim', // SEMPRE bloquear dating sims
+  'romance' // SEMPRE bloquear jogos de romance
+];
+
+/**
+ * Combinações perigosas - se o jogo tem INDIE + uma dessas, é bloqueado
+ */
+const INDIE_DANGEROUS_COMBINATIONS = [
+  'casual',
+  'simulation',
+  'adventure',
+  'rpg',
+  'strategy'
 ];
 
 /**
@@ -202,6 +217,30 @@ function hasAbsoluteBlockedCategories(genres: string[]): boolean {
 }
 
 /**
+ * Verifica combinações perigosas de Indie com outros gêneros
+ * Jogos indie + casual/simulation/adventure/rpg são frequentemente adultos
+ */
+function hasIndieDangerousCombination(genres: string[]): boolean {
+  if (!genres || genres.length === 0) return false;
+  
+  const normalizedGenres = genres.map(g => g.toLowerCase().trim());
+  const hasIndie = normalizedGenres.some(g => g.includes('indie'));
+  
+  if (!hasIndie) return false;
+  
+  const hasDangerous = INDIE_DANGEROUS_COMBINATIONS.some(dangerous =>
+    normalizedGenres.some(genre => genre.includes(dangerous))
+  );
+  
+  if (hasDangerous) {
+    console.log(`⚠️ COMBINAÇÃO PERIGOSA: Indie + ${normalizedGenres.join(', ')}`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Verifica se as tags/gêneros contêm conteúdo suspeito
  */
 function hasSuspiciousGenres(genres: string[]): boolean {
@@ -221,7 +260,7 @@ export function isGameAppropriate(game: any): boolean {
   const gameTitle = game.title || game.name || game.game?.title || '';
   const genres = game.genres || game.tags || game.game?.genres || [];
   
-  // PRIORIDADE MÁXIMA: Bloquear categorias absolutas (Adult Only, Anime, etc)
+  // PRIORIDADE MÁXIMA: Bloquear categorias absolutas (Adult Only, Anime, Visual Novel, etc)
   // Estas categorias são bloqueadas MESMO se o jogo estiver na whitelist
   if (hasAbsoluteBlockedCategories(genres)) {
     console.log(`🚫 BLOQUEIO ABSOLUTO: ${gameTitle} - Categoria proibida: ${genres.join(', ')}`);
@@ -229,9 +268,17 @@ export function isGameAppropriate(game: any): boolean {
   }
   
   // SEGUNDO: Verificar se é um jogo permitido (exceção)
+  // Jogos AAA conhecidos que podem ter palavras genéricas (woman, girl, etc)
   if (isAllowedGame(gameTitle)) {
     console.log(`✅ Jogo permitido (exceção): ${gameTitle}`);
     return true;
+  }
+  
+  // TERCEIRO: Verificar combinações perigosas (Indie + Casual/Simulation/etc)
+  // Muitos jogos pornôs são indie + casual ou indie + simulation
+  if (hasIndieDangerousCombination(genres)) {
+    console.log(`🚫 BLOQUEIO POR COMBINAÇÃO PERIGOSA: ${gameTitle} - ${genres.join(', ')}`);
+    return false;
   }
   
   // Verificar título
