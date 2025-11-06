@@ -1,6 +1,8 @@
 import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { shuffleWithSeed, stringToSeed } from '../utils/seedable-prng.js'
 import { listFreeGames } from '../integrations/epic/freeGames.js'
+import { filterInappropriateGames } from '../utils/content-filter.js'
+
 export interface ConsolidatedDeal {
   id: string // app:123 | package:456 | bundle:789
   title: string
@@ -432,13 +434,19 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
       }
     }
 
-    if (consolidated.length > 0) {
-      normalizedCache.set(ckey, consolidated)
-      console.log(`💾 Salvando ${consolidated.length} deals consolidados no cache`)
+    console.log(`📦 Total consolidado ANTES do filtro: ${consolidated.length} itens`)
+    
+    // 🛡️ FILTRAR CONTEÚDO IMPRÓPRIO
+    const safeConsolidated = filterInappropriateGames(consolidated)
+    console.log(`🛡️ Total consolidado APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
+
+    if (safeConsolidated.length > 0) {
+      normalizedCache.set(ckey, safeConsolidated)
+      console.log(`💾 Salvando ${safeConsolidated.length} deals consolidados no cache`)
     }
 
-    console.log(`✅ Retornando ${Math.min(consolidated.length, limit)} deals (de ${consolidated.length} disponíveis)`)
-    return consolidated.slice(0, limit)
+    console.log(`✅ Retornando ${Math.min(safeConsolidated.length, limit)} deals (de ${safeConsolidated.length} disponíveis)`)
+    return safeConsolidated.slice(0, limit)
   } catch (error) {
     console.error('Erro ao buscar deals consolidadas:', error)
     return []
@@ -639,7 +647,12 @@ async function generateEligiblePool(cc: string, l: string): Promise<Consolidated
     }
   }
 
-  console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${consolidated.length} itens)`)
+  console.log(`📦 Pool ANTES do filtro: ${consolidated.length} itens`)
+  
+  // 🛡️ FILTRAR CONTEÚDO IMPRÓPRIO
+  const safeConsolidated = filterInappropriateGames(consolidated)
+  console.log(`🛡️ Pool APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
+  console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${safeConsolidated.length} itens)`)
 
-  return consolidated;
+  return safeConsolidated;
 }
