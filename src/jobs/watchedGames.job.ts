@@ -306,9 +306,10 @@ export async function clearPriceCache() {
 }
 
 /**
- * Inicia o cron job que executa A CADA 1 HORA
+ * Inicia o cron job que executa a cada 1 hora (horário de Brasília)
  */
 let cronJobsStarted = false;
+let scheduledTask: cron.ScheduledTask | null = null;
 
 export function startWatchedGamesJob() {
   // Prevenir múltiplos registros do cron job
@@ -319,9 +320,14 @@ export function startWatchedGamesJob() {
   
   cronJobsStarted = true;
   
-  // Executa A CADA 1 HORA
-  cron.schedule('0 * * * *', async () => {
-    console.log('[WatchedGamesJob] ⏰ Verificação automática (a cada 1h)...');
+  // Destruir task antigo se existir
+  if (scheduledTask) {
+    scheduledTask.stop();
+  }
+  
+  // Executa a cada 1 hora
+  scheduledTask = cron.schedule('0 * * * *', async () => {
+    console.log('[WatchedGamesJob] ⏰ Verificação automática...');
     await runWatchedGamesNotification();
   }, {
     timezone: 'America/Sao_Paulo'
@@ -333,3 +339,4 @@ export function startWatchedGamesJob() {
   // Comentar em produção se não quiser execução imediata
   // setTimeout(() => runWatchedGamesNotification(), 5000);
 }
+

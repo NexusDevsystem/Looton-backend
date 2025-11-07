@@ -10,19 +10,22 @@ export async function startJobs() {
   const { queue: q1 } = createQueue<'updateAllStores'>('updateAllStores')
   await q1.add('updateAllStores', {}, { repeat: { pattern: env.DEALS_REFRESH_CRON } })
   createWorker<'updateAllStores'>('updateAllStores', async () => runUpdateAllStores())
+  console.log(`[Jobs] Atualização de ofertas: ${env.DEALS_REFRESH_CRON}`)
 
   // Job para atualizar cotação de moeda
   const { queue: q2 } = createQueue<'refreshCurrency'>('refreshCurrency')
   await q2.add('refreshCurrency', {}, { repeat: { pattern: env.CURRENCY_REFRESH_CRON } })
   createWorker<'refreshCurrency'>('refreshCurrency', async () => runRefreshCurrency())
 
-  // ✅ NOTIFICAÇÃO 1: Oferta do Dia (12h e 18h)
+  // ✅ NOTIFICAÇÃO 1: Oferta do Dia (2x por dia: 12h e 18h)
   startDailyOfferJob()
 
-  // ✅ NOTIFICAÇÃO 2: Jogos Vigiados (quando preço cai)
+  // ✅ NOTIFICAÇÃO 2: Jogos Vigiados (a cada 1 hora)
   startWatchedGamesJob()
 
   // Executar uma vez ao iniciar
   q1.add('updateAllStores', {})
+  
+  console.log('✅ Todos os jobs iniciados com sucesso!')
 }
 

@@ -42,3 +42,4 @@ export default async function routes(app: FastifyInstance) {
   await app.register(testPushRoutes, { prefix: '/test' })
   await app.register(testNotificationRoutes)
 }
+

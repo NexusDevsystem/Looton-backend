@@ -87,11 +87,18 @@ export async function runDailyOfferNotification() {
     console.log(`[DailyOfferJob] ✅ Oferta válida selecionada: ${bestOffer.title} - ${bestOffer.discount}% OFF - ${bestOffer.priceFormatted}`);
 
     // Criar mensagens para todos os tokens válidos
-    const validTokens = activeUsers
+    const allTokens = activeUsers
       .map(user => user.pushToken!)
       .filter(token => Expo.isExpoPushToken(token));
 
-    const messages: ExpoPushMessage[] = validTokens.map(token => ({
+    // DEDUPLICAR tokens para evitar envio duplicado
+    const uniqueTokens = [...new Set(allTokens)];
+    
+    if (allTokens.length !== uniqueTokens.length) {
+      console.warn(`[DailyOfferJob] ⚠️ Detectados ${allTokens.length - uniqueTokens.length} tokens duplicados! Enviando apenas para tokens únicos.`);
+    }
+
+    const messages: ExpoPushMessage[] = uniqueTokens.map(token => ({
       to: token,
       sound: 'default',
       title: notificationTitle,
@@ -240,31 +247,36 @@ async function getBestOfferOfTheDay() {
  * Inicia o cron job que executa 2x por dia (12h e 18h - horário de Brasília)
  */
 let cronJobsStarted = false;
+let scheduledTasks: cron.ScheduledTask[] = [];
+const jobId = Math.random().toString(36).substring(7);
 
 export function startDailyOfferJob() {
   // Prevenir múltiplos registros do cron job
   if (cronJobsStarted) {
-    console.log('[DailyOfferJob] ⚠️ Jobs já iniciados. Ignorando chamada duplicada.');
+    console.log(`[DailyOfferJob:${jobId}] ⚠️ Jobs já iniciados. Ignorando chamada duplicada.`);
     return;
   }
   
   cronJobsStarted = true;
+  console.log(`[DailyOfferJob:${jobId}] 🆔 Iniciando job com ID único: ${jobId}`);
+  
+  // Destruir tasks antigos se existirem
+  scheduledTasks.forEach(task => task.stop());
+  scheduledTasks = [];
   
   // Executa todos os dias às 12h (meio-dia)
-  cron.schedule('0 12 * * *', async () => {
-    console.log('[DailyOfferJob] 🌅 Trigger às 12h (meio-dia) - executando...');
+  const task12h = cron.schedule('0 12 * * *', async () => {
+    console.log(`[DailyOfferJob:${jobId}] 🌅 Trigger às 12h (meio-dia) - executando...`);
     await runDailyOfferNotification();
-  }, {
-    timezone: 'America/Sao_Paulo'
-  });
+  }, { timezone: 'America/Sao_Paulo' });
+  scheduledTasks.push(task12h);
 
   // Executa todos os dias às 18h (final da tarde)
-  cron.schedule('0 18 * * *', async () => {
-    console.log('[DailyOfferJob] 🌆 Trigger às 18h (final da tarde) - executando...');
+  const task18h = cron.schedule('0 18 * * *', async () => {
+    console.log(`[DailyOfferJob:${jobId}] 🌆 Trigger às 18h (final da tarde) - executando...`);
     await runDailyOfferNotification();
-  }, {
-    timezone: 'America/Sao_Paulo'
-  });
+  }, { timezone: 'America/Sao_Paulo' });
+  scheduledTasks.push(task18h);
 
-  console.log('[DailyOfferJob] ✅ Job iniciado - executará 2x por dia: 12h e 18h (horário de Brasília)');
+  console.log(`[DailyOfferJob:${jobId}] ✅ Job iniciado - executará 2x por dia: 12h e 18h (horário de Brasília)`);
 }
