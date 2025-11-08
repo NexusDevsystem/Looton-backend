@@ -10,6 +10,8 @@ interface DailyOfferHistory {
   title: string;
   discount: number;
   price: string;
+  body?: string;
+  blocked?: boolean;
   sentTo: number;
   timestamp: string;
 }
@@ -51,8 +53,6 @@ export async function runDailyOfferNotification() {
     
     if (currentHour >= 18) {
       notificationTitle = '🌟 Oferta da Noite!';
-    } else if (currentHour >= 16) {
-      notificationTitle = '☀️ Oferta da Tarde!';
     } else if (currentHour >= 12) {
       notificationTitle = '🎮 Oferta do Dia!';
     }
@@ -98,11 +98,39 @@ export async function runDailyOfferNotification() {
       console.warn(`[DailyOfferJob] ⚠️ Detectados ${allTokens.length - uniqueTokens.length} tokens duplicados! Enviando apenas para tokens únicos.`);
     }
 
+    // Compor corpo da notificação uma vez (para inspeção / bloqueio)
+    const bodyTemplate = `${bestOffer.title} - ${bestOffer.discount}% OFF por ${bestOffer.priceFormatted}`;
+
+    // Lista temporária de padrões a bloquear (testes antigos, strings manuais)
+    const BLOCK_PATTERNS: RegExp[] = [
+      /Confira super Oferta do Dia.*29,?99/i,
+      /super oferta do dia/i,
+    ];
+
+    if (BLOCK_PATTERNS.some(p => p.test(bodyTemplate))) {
+      console.warn(`[DailyOfferJob] ⚠️ Mensagem bloqueada por padrão: "${bodyTemplate}"`);
+      // Registrar no histórico como bloqueada para auditoria
+      dailyOfferHistory.push({
+        type: 'daily_offer',
+        title: bestOffer.title,
+        discount: bestOffer.discount,
+        price: bestOffer.priceFormatted,
+        body: bodyTemplate,
+        blocked: true,
+        sentTo: 0,
+        timestamp: new Date().toISOString()
+      });
+      if (dailyOfferHistory.length > 30) {
+        dailyOfferHistory.shift();
+      }
+      return;
+    }
+
     const messages: ExpoPushMessage[] = uniqueTokens.map(token => ({
       to: token,
       sound: 'default',
       title: notificationTitle,
-      body: `${bestOffer.title} - ${bestOffer.discount}% OFF por ${bestOffer.priceFormatted}`,
+      body: bodyTemplate,
       data: {
         type: 'daily_offer',
         gameId: bestOffer.id,
