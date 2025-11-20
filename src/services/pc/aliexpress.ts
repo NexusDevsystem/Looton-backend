@@ -104,7 +104,7 @@ export async function fetchDeals(opts?: { limit?: number; q?: string }): Promise
 
           if (results.length >= limit) break
         } catch (error) {
-          logger.warn(`Erro ao buscar categoria ${categoryId}:`, error)
+          logger.warn(`Erro ao buscar categoria ${categoryId}: ${error}`)
           continue
         }
       }
@@ -114,7 +114,7 @@ export async function fetchDeals(opts?: { limit?: number; q?: string }): Promise
     return results.slice(0, limit)
 
   } catch (error) {
-    logger.error('❌ Erro ao buscar produtos do AliExpress:', error)
+    logger.error(`❌ Erro ao buscar produtos do AliExpress: ${error}`)
     return []
   }
 }
@@ -158,7 +158,7 @@ async function searchProducts(query: string, limit: number): Promise<PcOffer[]> 
 
     return parseProducts(response.data.result?.products?.product || [])
   } catch (error) {
-    logger.error('Erro na busca do AliExpress:', error)
+    logger.error(`Erro na busca do AliExpress: ${error}`)
     throw error
   }
 }
@@ -202,7 +202,7 @@ async function fetchCategoryProducts(categoryId: string, limit: number): Promise
 
     return parseProducts(response.data.result?.products?.product || [])
   } catch (error) {
-    logger.error(`Erro ao buscar categoria ${categoryId}:`, error)
+    logger.error(`Erro ao buscar categoria ${categoryId}: ${error}`)
     return []
   }
 }
@@ -261,7 +261,7 @@ export async function fetchSearch(opts: { q: string; limit?: number }): Promise<
 
     return await fetchDeals({ q: enhancedQuery, limit })
   } catch (error) {
-    logger.error('Erro na busca do AliExpress:', error)
+    logger.error(`Erro na busca do AliExpress: ${error}`)
     return []
   }
 }
