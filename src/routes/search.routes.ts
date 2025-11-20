@@ -85,7 +85,7 @@ export default async function searchRoutes(app: FastifyInstance) {
     const schema = z.object({
       q: z.string().min(2),
       page: z.coerce.number().min(1).optional(),
-      limit: z.coerce.number().min(1).max(50).optional(),
+      limit: z.coerce.number().min(1).max(300).optional(),
       cc: z.string().length(2).optional(),
       l: z.string().optional(),
     })
@@ -120,12 +120,14 @@ export default async function searchRoutes(app: FastifyInstance) {
 
       if (!items.length) return reply.send([])
 
-      // 2) Enriquecer somente os que vão ser exibidos (primeira página + próximos 20)
-      const maxEnrich = Math.min(items.length, pageSize + 20)
+      // 2) Enriquecer somente os que vão ser exibidos (primeira página + buffer)
+      // Se limit > 100, enriquecer até limit + 50. Caso contrário, limit + 20
+      const buffer = pageSize > 100 ? 50 : 20
+      const maxEnrich = Math.min(items.length, pageSize + buffer)
       const slice = items.slice(0, maxEnrich)
 
-      // Limite de concorrência: 8
-      const conc = 8
+      // Limite de concorrência: ajusta baseado no tamanho da busca
+      const conc = pageSize > 100 ? 16 : 8
       const out: any[] = []
       let idx = 0
       await Promise.all(Array.from({ length: conc }).map(async () => {
