@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { fetchConsolidatedDeals } from '../services/consolidated-deals.service.js'
 import { filterNSFWGames } from '../utils/nsfw-shield.js'
+import { filterGamesWithAI } from '../services/content-ai-classifier.service.js'
+import { filterByCategory, type GameCategory } from '../utils/game-categories.js'
 
 export default async function dealsRoutes(app: FastifyInstance) {
 
@@ -14,8 +16,9 @@ export default async function dealsRoutes(app: FastifyInstance) {
       cc: z.string().length(2).optional(),
       l: z.string().optional(),
       useDailyRotation: z.coerce.boolean().optional(), // Parâmetro para controlar rotação diária
+      category: z.enum(['racing', 'fps', 'survival', 'sports']).optional(), // Filtro por categoria
     })
-    const { limit, boost, cc, l, useDailyRotation } = schema.parse(req.query)
+    const { limit, boost, cc, l, useDailyRotation, category } = schema.parse(req.query)
     
     try {
       console.log('🎮 Buscando deals com preços ao vivo da Steam...')
@@ -26,8 +29,12 @@ export default async function dealsRoutes(app: FastifyInstance) {
       console.log(`✅ Deals consolidados retornados: ${deals.length} jogos únicos`)
       
       // 🛡️ NSFW Shield - Sistema multi-camadas
-      const safeDeals = filterNSFWGames(deals)
-      console.log(`🛡️ Deals filtrados: ${safeDeals.length} seguros de ${deals.length} total (${deals.length - safeDeals.length} removidos)`)
+      const nsfwFiltered = filterNSFWGames(deals)
+      console.log(`🛡️ NSFW filtrados: ${nsfwFiltered.length} seguros de ${deals.length} total (${deals.length - nsfwFiltered.length} removidos)`)
+
+      // 🤖 AI Content Classifier - Análise profunda de conteúdo adulto
+      const safeDeals = filterGamesWithAI(nsfwFiltered)
+      console.log(`🤖 AI filtrados: ${safeDeals.length} seguros de ${nsfwFiltered.length} total (${nsfwFiltered.length - safeDeals.length} removidos)`)
       
       // Se não houver deals, retornar array vazio
       if (safeDeals.length === 0) {
@@ -109,9 +116,25 @@ export default async function dealsRoutes(app: FastifyInstance) {
           }
         }
       })
-      
+
+      // Filtrar por categoria se especificado
+      let finalDeals = formattedDeals
+      if (category) {
+        console.log(`🎯 Filtrando por categoria: ${category}`)
+        finalDeals = filterByCategory(formattedDeals, category as GameCategory)
+
+        // Quando filtrar por categoria, mostrar APENAS jogos em promoção e pagos
+        finalDeals = finalDeals.filter(deal => {
+          const isOnSale = (deal.discountPct || 0) > 0
+          const isPaid = (deal.priceFinalCents || 0) > 0
+          return isOnSale && isPaid
+        })
+
+        console.log(`✅ ${finalDeals.length} jogos encontrados na categoria ${category} (apenas em promoção e pagos)`)
+      }
+
       // Retornar array diretamente como o frontend espera
-      return reply.send(formattedDeals)
+      return reply.send(finalDeals)
       
     } catch (error) {
       console.error('Erro ao buscar deals:', error)

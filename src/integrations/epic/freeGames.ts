@@ -40,9 +40,19 @@ function calculateDiscountPercent(originalPrice: number = 0, finalPrice: number 
 const epicCache = new Map<string, { data: any; timestamp: number }>();
 
 // Configurações de cache e timeout
-const CACHE_TTL = parseInt(process.env.EPIC_CACHE_TTL || '600') * 1000; // TTL em milissegundos
+// Reduzido para 5 minutos para atualizar mais frequentemente
+const CACHE_TTL = parseInt(process.env.EPIC_CACHE_TTL || '300') * 1000; // TTL em milissegundos (padrão: 5 min)
 const TIMEOUT = 6000; // 6 segundos
 const MAX_RETRIES = 3;
+
+/**
+ * Limpa o cache da Epic Games
+ * Útil para forçar uma atualização imediata dos jogos grátis
+ */
+export function clearEpicCache(): void {
+  epicCache.clear();
+  logger.info('Cache da Epic Games limpo manualmente');
+}
 
 interface EpicGamePromotion {
   id: string;
@@ -209,28 +219,53 @@ export async function listFreeGames(
 
 
 
+      const now = Date.now();
+      logger.info(`🕒 Backend - Processando ${promotions.length} promoções da Epic Games`);
+
       for (const promotion of promotions) {
-        // Verificar se o jogo tem promoção ativa
+        // Verificar se o jogo tem promoção ATIVA NO MOMENTO
         const activePromotion = promotion.promotions?.promotionalOffers?.[0]?.promotionalOffers?.find(
-          offer => 
-            new Date(offer.startDate).getTime() <= Date.now() && 
-            (!offer.endDate || new Date(offer.endDate).getTime() >= Date.now())
+          offer => {
+            const startTime = new Date(offer.startDate).getTime();
+            const endTime = new Date(offer.endDate).getTime();
+            const isActive = startTime <= now && now < endTime; // Mudado para < ao invés de >=
+
+            if (!isActive && promotion.title) {
+              logger.debug(`🚫 "${promotion.title}" - Promoção não ativa. Start: ${offer.startDate}, End: ${offer.endDate}, Now: ${new Date(now).toISOString()}`);
+            }
+
+            return isActive;
+          }
         );
 
-        // Somente adicionar se houver promoção ativa E o jogo esteja em desconto (não apenas gratuito)
-        if (!activePromotion) continue;
+        // Somente adicionar se houver promoção ativa
+        if (!activePromotion) {
+          if (promotion.title) {
+            logger.debug(`🚫 Filtrando "${promotion.title}" - Sem promoção ativa`);
+          }
+          continue;
+        }
 
-        // Verificar se o jogo está em promoção (desconto > 0 ou preço final menor que o original)
-        const originalPrice = promotion.price?.totalPrice?.originalPrice;
-        const finalPrice = promotion.price?.totalPrice?.discountPrice;
+        // Verificar se o jogo está realmente em promoção
+        const originalPrice = promotion.price?.totalPrice?.originalPrice || 0;
+        const finalPrice = promotion.price?.totalPrice?.discountPrice || 0;
         const calculatedDiscountPercent = calculateDiscountPercent(originalPrice, finalPrice);
-        
-        // Considerar jogo em promoção se:
-        // 1. É gratuito (finalPrice === 0) OU
-        // 2. Tem desconto real (finalPrice < originalPrice e desconto > 0)
-        const isOnPromotion = finalPrice === 0 || (finalPrice < originalPrice && calculatedDiscountPercent > 0);
-        
-        if (!isOnPromotion) continue;
+
+        // Critérios mais rigorosos:
+        // 1. É GRÁTIS (finalPrice === 0) OU
+        // 2. Tem desconto real E SIGNIFICATIVO (finalPrice < originalPrice e desconto >= 10%)
+        const isFree = finalPrice === 0;
+        const hasSignificantDiscount = finalPrice < originalPrice && calculatedDiscountPercent >= 10;
+        const isOnPromotion = isFree || hasSignificantDiscount;
+
+        if (!isOnPromotion) {
+          if (promotion.title) {
+            logger.debug(`🚫 Filtrando "${promotion.title}" - Preço: ${finalPrice}, Original: ${originalPrice}, Desconto: ${calculatedDiscountPercent}%`);
+          }
+          continue;
+        }
+
+        logger.info(`✅ Incluindo "${promotion.title}" - Grátis: ${isFree}, Desconto: ${calculatedDiscountPercent}%, Termina: ${activePromotion.endDate}`);
 
         // Buscar imagem de capa do tipo "Thumbnail" ou "OfferImageTall" ou "OfferImageWide"
         let coverUrl = '';

@@ -2,6 +2,7 @@ import { MemoryCache, ttlSecondsToMs } from '../cache/memory.js'
 import { shuffleWithSeed, stringToSeed } from '../utils/seedable-prng.js'
 import { listFreeGames } from '../integrations/epic/freeGames.js'
 import { filterNSFWGamesAsync } from '../utils/nsfw-shield.js'
+import { filterGamesWithAI } from './content-ai-classifier.service.js'
 import { steamAdapter } from '../adapters/steam.adapter.js'
 import { epicAdapter } from '../adapters/epic.adapter.js'
 // import { itadAdapter } from '../adapters/itad.adapter.js' // REMOVIDO - Não usar ITAD
@@ -35,6 +36,62 @@ export interface ConsolidatedDeal {
   totalStores: number
 }
 
+// Palavras-chave EXATAS para identificar DLCs, pacotes e conteúdos adicionais
+// IMPORTANTE: Usar apenas termos muito específicos para evitar falsos positivos
+const DLC_EXACT_KEYWORDS = [
+  'soundtrack', 'ost', 'season pass', 'expansion pass', 'expansion pack',
+  'character pack', 'weapon pack', 'skin pack', 'map pack', 'booster pack',
+  'artbook', 'art book', 'wallpaper pack', 'deluxe upgrade', 'gold upgrade',
+  'premium upgrade', 'ultimate upgrade', 'digital deluxe upgrade'
+]
+
+// Padrões que indicam DLC quando combinados com " - " no título
+const DLC_SUFFIX_PATTERNS = [
+  'dlc', 'expansion', 'soundtrack', 'ost', 'season pass', 'add-on', 'addon'
+]
+
+// Função para verificar se um deal é DLC/pacote/conteúdo adicional
+function isDLCOrPackage(deal: ConsolidatedDeal | any): boolean {
+  // 1. Verificar pelo campo kind (mais confiável)
+  if (deal.kind && deal.kind !== 'game') {
+    return true
+  }
+
+  // 2. Verificar pelo título
+  const title = (deal.title || deal.game?.title || '').toLowerCase()
+
+  // 2a. Verificar palavras-chave exatas
+  for (const keyword of DLC_EXACT_KEYWORDS) {
+    const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+    if (regex.test(title)) {
+      return true
+    }
+  }
+
+  // 2b. Verificar padrão "Game Name - DLC/Expansion/etc"
+  // Só filtrar se tiver " - " E uma das palavras-chave de DLC
+  if (title.includes(' - ')) {
+    for (const pattern of DLC_SUFFIX_PATTERNS) {
+      const regex = new RegExp(`\\b${pattern}\\b`, 'i')
+      if (regex.test(title)) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+// Função para filtrar DLCs e pacotes de uma lista de deals
+function filterOutDLCsAndPackages(deals: ConsolidatedDeal[]): ConsolidatedDeal[] {
+  const filtered = deals.filter(deal => !isDLCOrPackage(deal))
+  const removed = deals.length - filtered.length
+  if (removed > 0) {
+    console.log(`🎮 Filtro DLC/Pacote: ${removed} itens removidos de ${deals.length}`)
+  }
+  return filtered
+}
+
 // Cache normalizado por cc/l (5 minutos)
 const normalizedCache = new MemoryCache<string, ConsolidatedDeal[]>(ttlSecondsToMs(300))
 
@@ -51,22 +108,6 @@ async function fetchSpecials(cc: string, l: string) {
   return items
 }
 
-// Nova função: Buscar top sellers da Steam
-async function fetchTopSellers(cc: string, l: string) {
-  try {
-    const url = `https://store.steampowered.com/api/featuredcategories?cc=${cc}&l=${l}`
-    const res = await fetch(url)
-    if (!res.ok) return [] as any[]
-    const json = await res.json()
-    const topSellers: any[] = json?.top_sellers?.items ?? []
-    const newReleases: any[] = json?.new_releases?.items ?? []
-    // Combinar top sellers e lançamentos
-    return [...topSellers, ...newReleases]
-  } catch (error) {
-    console.error('Erro ao buscar top sellers:', error)
-    return []
-  }
-}
 
 // Nova função: Buscar jogos por tag/gênero
 async function fetchByTag(tag: string, cc: string, l: string, maxResults: number = 50) {
@@ -253,9 +294,6 @@ const dailyPoolsCache = new MemoryCache<string, ConsolidatedDeal[]>(ttlSecondsTo
 // Cache para listas de ofertas diárias
 const dailyFeaturedCache = new MemoryCache<string, ConsolidatedDeal[]>(ttlSecondsToMs(108000)) // 30h TTL
 
-// Cache para IDs recentes (antirrepetição de 7 dias)
-const recentIdsCache = new MemoryCache<string, Set<string>>(ttlSecondsToMs(604800)) // 7 dias TTL
-
 export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: string; l?: string; useDailyRotation?: boolean }): Promise<ConsolidatedDeal[]> {
   const cc = (opts?.cc || 'BR').toUpperCase()
   const l = opts?.l || 'pt-BR'
@@ -408,87 +446,98 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
     console.log(`📦 Total consolidado ANTES do filtro: ${consolidated.length} itens`)
     
     // 🛡️ NSFW Shield - Sistema multi-camadas (ASYNC - busca idade da Steam)
-    const safeConsolidated = await filterNSFWGamesAsync(consolidated)
-    console.log(`🛡️ Total consolidado APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
+    const nsfwFiltered = await filterNSFWGamesAsync(consolidated)
+    console.log(`🛡️ NSFW filtrado: ${nsfwFiltered.length} itens (${consolidated.length - nsfwFiltered.length} removidos)`)
 
-    if (safeConsolidated.length > 0) {
-      normalizedCache.set(ckey, safeConsolidated)
-      console.log(`💾 Salvando ${safeConsolidated.length} deals consolidados no cache`)
+    // 🤖 AI Content Classifier - Análise profunda de conteúdo adulto
+    const safeConsolidated = filterGamesWithAI(nsfwFiltered)
+    console.log(`🤖 AI filtrado: ${safeConsolidated.length} itens (${nsfwFiltered.length - safeConsolidated.length} removidos)`)
+
+    // 🎮 Filtro de DLCs/Pacotes - Mostrar apenas jogos base
+    const gamesOnly = filterOutDLCsAndPackages(safeConsolidated)
+    console.log(`🎮 Filtro DLC: ${gamesOnly.length} jogos base (${safeConsolidated.length - gamesOnly.length} DLCs/pacotes removidos)`)
+
+    if (gamesOnly.length > 0) {
+      normalizedCache.set(ckey, gamesOnly)
+      console.log(`💾 Salvando ${gamesOnly.length} deals consolidados no cache`)
     }
 
-    console.log(`✅ Retornando ${Math.min(safeConsolidated.length, limit)} deals (de ${safeConsolidated.length} disponíveis)`)
-    return safeConsolidated.slice(0, limit)
+    console.log(`✅ Retornando ${Math.min(gamesOnly.length, limit)} deals (de ${gamesOnly.length} disponíveis)`)
+    return gamesOnly.slice(0, limit)
   } catch (error) {
     console.error('Erro ao buscar deals consolidadas:', error)
     return []
   }
 }
 
-// Função para gerar as ofertas diárias com rotação
+// Função para gerar as ofertas diárias com rotação por subconjuntos
 async function generateDailyFeatured(cc: string, l: string, dayKey: string, limit: number = 50): Promise<ConsolidatedDeal[]> {
   // Gerar seed baseada em cc + l + dayKey
   const seedInput = `${cc}|${l}|${dayKey}`;
   const seed = stringToSeed(seedInput);
-  
+
   // Obter ou criar pool diário
   const poolKey = `pool:${cc}:${l}`;
   let pool = dailyPoolsCache.get(poolKey);
-  
+
   if (!pool) {
     // Atualizar pool com ofertas elegíveis
     pool = await generateEligiblePool(cc, l);
     dailyPoolsCache.set(poolKey, pool);
   }
-  
-  // Obter IDs recentes para antirrepetição (7 dias para evitar repetição real)
-  const recentKey = `recent:${cc}:${l}`;
-  let recentIds = recentIdsCache.get(recentKey);
-  if (!recentIds) {
-    recentIds = new Set<string>();
-    recentIdsCache.set(recentKey, recentIds);
+
+  if (pool.length === 0) {
+    console.log(`⚠️ Pool vazio para ${cc}:${l}`)
+    return [];
   }
-  
-  // Filtrar pool para excluir IDs recentes
-  const poolWithoutRecent = pool.filter(deal => !recentIds!.has(deal.id));
-  
-  // Se não houver itens suficientes após filtragem, usar o pool completo
-  // (mas somente para esta requisição, não adicionar ao recentIds global)
-  let selected: ConsolidatedDeal[];
-  if (poolWithoutRecent.length === 0) {
-    // Se todos os itens estão nos recentIds, usar o pool original
-    // mas ainda embaralhar com a seed para consistência diária
-    const shuffledPool = shuffleWithSeed(pool, seed);
-    selected = shuffledPool.slice(0, limit);
-  } else {
-    // Se temos itens após filtragem, verificar se temos quantidade suficiente para o limite
-    // Se não tivermos, mesclar itens recentes e não recentes
-    let finalPool: ConsolidatedDeal[];
-    if (poolWithoutRecent.length < limit) {
-      // Combina itens não recentes + alguns itens recentes para atingir o limite
-      const shuffledRecent = shuffleWithSeed(
-        pool.filter(deal => recentIds!.has(deal.id)), 
-        seed + 1 // usar seed diferente para evitar repetição exata
-      );
-      finalPool = [...poolWithoutRecent, ...shuffledRecent.slice(0, limit - poolWithoutRecent.length)];
-    } else {
-      finalPool = poolWithoutRecent;
-    }
-    
-    const shuffledPool = shuffleWithSeed(finalPool, seed);
-    selected = shuffledPool.slice(0, limit);
+
+  // NOVA LÓGICA: Rotação por subconjuntos em vez de apenas shuffle
+  // Isso garante que a cada dia os jogos exibidos sejam DIFERENTES, não apenas embaralhados
+
+  // 1. Ordenar o pool de forma determinística para garantir consistência
+  // Ordenar por desconto (maior primeiro), depois por título para desempate
+  const sortedPool = [...pool].sort((a, b) => {
+    const discountA = a.bestPrice.discountPct || 0;
+    const discountB = b.bestPrice.discountPct || 0;
+    if (discountB !== discountA) return discountB - discountA;
+    return (a.title || '').localeCompare(b.title || '');
+  });
+
+  // 2. Calcular quantas "janelas" de jogos podemos ter
+  // Cada janela contém 'limit' jogos diferentes
+  const totalGames = sortedPool.length;
+  const windowSize = limit;
+  const numWindows = Math.ceil(totalGames / windowSize);
+
+  // 3. Calcular qual janela usar baseado na data
+  // Usar a seed para determinar o índice da janela
+  const windowIndex = seed % numWindows;
+
+  // 4. Selecionar os jogos da janela atual
+  const startIndex = windowIndex * windowSize;
+  const endIndex = Math.min(startIndex + windowSize, totalGames);
+  let selectedGames = sortedPool.slice(startIndex, endIndex);
+
+  // 5. Se a janela não tiver jogos suficientes, completar com jogos de outras janelas
+  if (selectedGames.length < limit) {
+    // Pegar jogos adicionais do início da lista (circular)
+    const needed = limit - selectedGames.length;
+    const additionalGames = sortedPool.slice(0, needed);
+    selectedGames = [...selectedGames, ...additionalGames];
   }
-  
-  // Adicionar os selecionados aos IDs recentes (apenas se não estiver vazio para evitar problemas)
-  // Mas não adicionar se usamos itens recentes (para não duplicar a marcação)
-  if (selected.length > 0 && poolWithoutRecent.length > 0) {
-    for (const deal of selected) {
-      if (!recentIds.has(deal.id)) { // Só adicionar se não estiver nos recentes
-        recentIds.add(deal.id);
-      }
-    }
-  }
-  
-  return selected;
+
+  // 6. Embaralhar levemente os jogos selecionados para variar a ordem dentro da janela
+  // Mas mantendo os melhores descontos no topo
+  const topDeals = selectedGames.slice(0, Math.min(5, selectedGames.length)); // Top 5 mantém posição
+  const restDeals = selectedGames.slice(5);
+  const shuffledRest = shuffleWithSeed(restDeals, seed);
+
+  const finalSelection = [...topDeals, ...shuffledRest];
+
+  console.log(`📅 Rotação diária: Janela ${windowIndex + 1}/${numWindows} (jogos ${startIndex + 1}-${endIndex} de ${totalGames})`)
+  console.log(`✅ Selecionados ${finalSelection.length} jogos diferentes para ${dayKey}`)
+
+  return finalSelection;
 }
 
 // Função para gerar o pool elegível de ofertas
@@ -524,7 +573,8 @@ async function generateEligiblePool(cc: string, l: string): Promise<Consolidated
     const discountPercent = item.discount_percent ?? 0
     
     // Aplicar filtro de desconto mínimo (30% como especificado)
-    if (discountPercent < 30) continue
+    // Removido filtro de 30% - mostrar todas as promoções
+    // if (discountPercent < 30) continue
     
     const slug = item.name.toLowerCase().replace(/[^\\w]+/g, '-').replace(/(^-|-$)/g, '')
     
@@ -621,9 +671,17 @@ async function generateEligiblePool(cc: string, l: string): Promise<Consolidated
   console.log(`📦 Pool ANTES do filtro: ${consolidated.length} itens`)
   
   // 🛡️ NSFW Shield - Sistema multi-camadas (ASYNC - busca idade da Steam)
-  const safeConsolidated = await filterNSFWGamesAsync(consolidated)
-  console.log(`🛡️ Pool APÓS filtro: ${safeConsolidated.length} itens (${consolidated.length - safeConsolidated.length} removidos)`)
-  console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${safeConsolidated.length} itens)`)
+  const nsfwFiltered = await filterNSFWGamesAsync(consolidated)
+  console.log(`🛡️ Pool NSFW filtrado: ${nsfwFiltered.length} itens (${consolidated.length - nsfwFiltered.length} removidos)`)
 
-  return safeConsolidated;
+  // 🤖 AI Content Classifier - Análise profunda de conteúdo adulto
+  const safeConsolidated = filterGamesWithAI(nsfwFiltered)
+  console.log(`🤖 Pool AI filtrado: ${safeConsolidated.length} itens (${nsfwFiltered.length - safeConsolidated.length} removidos)`)
+
+  // 🎮 Filtro de DLCs/Pacotes - Mostrar apenas jogos base
+  const gamesOnly = filterOutDLCsAndPackages(safeConsolidated)
+  console.log(`🎮 Pool Filtro DLC: ${gamesOnly.length} jogos base (${safeConsolidated.length - gamesOnly.length} DLCs/pacotes removidos)`)
+  console.log(`🎮 Pool de ofertas elegíveis gerado para ${cc}:${l} (${gamesOnly.length} itens)`)
+
+  return gamesOnly;
 }

@@ -395,3 +395,8 @@ export default async function favoritesRoutes(app: FastifyInstance) {
     }
   })
 }
+
+
+
+
+

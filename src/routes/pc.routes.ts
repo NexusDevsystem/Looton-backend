@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { getCurrentPcFeed, rebuildPcFeed } from '../services/pc/aggregate.js'
 import * as terabyte from '../services/pc/terabyte.js'
+import * as aliexpress from '../services/pc/aliexpress.js'
 import type { PcOffer } from '../services/pc/types.js'
 import { env } from '../env.js'
 
@@ -221,8 +222,10 @@ export default async function pcRoutes(app: FastifyInstance) {
     if (full) {
       // If a search query is present, prefer calling store-specific search to avoid fetching all and filtering client-side
       if (text) {
-        // Currently implemented for Terabyte only
+        // Currently implemented for Terabyte and AliExpress
         const wantsTerabyteOnly = stores.length === 0 || (stores.length === 1 && stores[0] === 'terabyte')
+        const wantsAliExpressOnly = stores.length === 1 && stores[0] === 'aliexpress'
+
         if (wantsTerabyteOnly) {
           try {
             // Simple pagination by offset on top of concat pages from fetchSearch
@@ -238,6 +241,24 @@ export default async function pcRoutes(app: FastifyInstance) {
             return reply.send({ slotDate: new Date().toISOString(), items })
           } catch (e) {
             req.log.warn({ err: e }, 'terabyte search failed')
+            return reply.send({ slotDate: new Date().toISOString(), items: [] })
+          }
+        }
+
+        if (wantsAliExpressOnly) {
+          try {
+            const pageSize = Math.min(120, limit || 60)
+            const res = await aliexpress.fetchSearch({ q: text, limit: offset ? offset + pageSize : pageSize })
+            let items = res || []
+            if (offset) items = items.slice(offset)
+            if (limit) items = items.slice(0, limit)
+            // Only sort if not using offset (first page) - for better performance
+            if (!offset) {
+              items.sort((a, b) => (b.discountPct || 0) - (a.discountPct || 0))
+            }
+            return reply.send({ slotDate: new Date().toISOString(), items })
+          } catch (e) {
+            req.log.warn({ err: e }, 'aliexpress search failed')
             return reply.send({ slotDate: new Date().toISOString(), items: [] })
           }
         }
@@ -257,7 +278,8 @@ export default async function pcRoutes(app: FastifyInstance) {
         return reply.send({ ...cached.payload, items })
       }
       const map: Record<string, (o?: any) => Promise<PcOffer[]>> = {
-        terabyte: (o?: any) => terabyte.fetchDeals(o)
+        terabyte: (o?: any) => terabyte.fetchDeals(o),
+        aliexpress: (o?: any) => aliexpress.fetchDeals(o)
       }
       const selected = (stores.length ? stores : Object.keys(map)).filter((s) => map[s])
       const raw: PcOffer[] = []
@@ -296,7 +318,8 @@ export default async function pcRoutes(app: FastifyInstance) {
     if (q.refresh === '1' || q.refresh === 1) {
       try {
         await rebuildPcFeed([
-          () => terabyte.fetchDeals({ limit: 50 })
+          () => terabyte.fetchDeals({ limit: 50 }),
+          () => aliexpress.fetchDeals({ limit: 50 })
         ])
       } catch (e) {
         req.log.warn({ err: e }, 'failed manual pc rebuild')

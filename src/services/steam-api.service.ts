@@ -158,13 +158,9 @@ export async function fetchSteamFeatured(): Promise<SteamFeaturedItem[]> {
     
     const items: SteamFeaturedItem[] = []
     
-    // Processar diferentes categorias de ofertas
+    // Processar apenas ofertas especiais (specials)
     const categories = [
-      data.specials?.items || [],
-      data.featured_win || [],
-      data.top_sellers?.items || [],
-      data.new_releases?.items || [],
-      data.coming_soon?.items || []
+      data.specials?.items || []
     ]
     
     for (const category of categories) {

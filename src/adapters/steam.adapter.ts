@@ -167,9 +167,28 @@ export const steamAdapter: StoreAdapter = {
       }
       
       const json = await res.json()
-      console.log(`📊 Steam API retornou: ${json?.specials?.items?.length || 0} specials`)
 
-      const items: any[] = json?.specials?.items ?? []
+      // Buscar ofertas especiais (specials) E top sellers
+      const specials: any[] = json?.specials?.items ?? []
+      const topSellers: any[] = json?.top_sellers?.items ?? []
+
+      console.log(`📊 Steam API retornou: ${specials.length} specials + ${topSellers.length} top sellers`)
+
+      // Combinar specials e top sellers
+      const allItems = [...specials, ...topSellers]
+      const items: any[] = []
+      const seenIds = new Set<number>()
+
+      // Remover duplicatas baseado no ID
+      for (const item of allItems) {
+        if (item?.id && !seenIds.has(item.id)) {
+          seenIds.add(item.id)
+          items.push(item)
+        }
+      }
+
+      console.log(`📊 Total de ${items.length} jogos únicos após combinar todas as fontes`)
+
       const offers: OfferDTO[] = []
 
       for (const it of items) {
@@ -179,8 +198,10 @@ export const steamAdapter: StoreAdapter = {
         const final = typeof it.final_price === 'number' ? it.final_price : 0
         const discount = typeof it.discount_percent === 'number' ? it.discount_percent : 0
 
-        // Filtrar apenas itens com desconto (> 0) e preço válido
-        if (!(discount > 0 && initial > 0 && final >= 0)) continue
+        // Aceitar jogos com ou sem desconto, mas precisa ter preço válido
+        // Se não tiver original_price, usar final_price como base
+        const basePrice = initial > 0 ? initial : final
+        if (!(basePrice > 0 && final >= 0)) continue
 
         // Exclude Assassin's Creed Black Flag - Golden Edition which doesn't exist on Steam
         const titleLower = it.name.toLowerCase();
@@ -194,9 +215,9 @@ export const steamAdapter: StoreAdapter = {
             storeAppId: String(it.id),
             title: it.name,
             url: `https://store.steampowered.com/app/${it.id}/`,
-            priceBase: Math.round(initial) / 100,
+            priceBase: Math.round(basePrice) / 100,
             priceFinal: Math.round(final) / 100,
-            priceBaseCents: Math.round(initial),
+            priceBaseCents: Math.round(basePrice),
             priceFinalCents: Math.round(final),
             discountPct: Math.max(0, Math.min(100, Math.round(discount))),
             currency: 'BRL',

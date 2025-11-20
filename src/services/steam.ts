@@ -29,14 +29,8 @@ export async function getFeaturedAppIds(): Promise<number[]> {
   const data = await fetchJson(url)
   const buckets: any[] = []
   const push = (arr: any) => { if (Array.isArray(arr)) buckets.push(arr) }
+  // Buscar apenas ofertas especiais (specials)
   push(data?.specials?.items || [])
-  push(data?.top_sellers?.items || [])
-  push(data?.new_releases?.items || [])
-  push(data?.coming_soon?.items || [])
-  // featured_win sometimes nests under items or large_capsules
-  push(data?.featured_win?.items || [])
-  push(data?.featured_win?.large_capsules || [])
-  if (Array.isArray(data?.featured_win)) push(data?.featured_win)
   const ids = new Set<number>()
   for (const list of buckets) {
     for (const it of list) {
