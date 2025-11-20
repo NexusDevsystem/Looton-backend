@@ -333,6 +333,11 @@ export async function fetchConsolidatedDeals(limit: number = 50, opts?: { cc?: s
     // 1. Buscar deals da STEAM usando API Steam direta
     const steamDeals = await steamAdapter.fetchTrending()
     console.log(`📦 Steam Deals: ${steamDeals.length} itens`)
+
+    if (steamDeals.length === 0) {
+      console.warn(`⚠️ ATENÇÃO: Steam retornou 0 deals! Possível rate limit ou erro na API.`)
+      console.warn(`💡 Continuando apenas com Epic Games...`)
+    }
     
     // 2. Buscar jogos da Epic Games via GraphQL
     let epicFreeGames: any[] = [];
